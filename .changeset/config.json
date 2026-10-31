@@ -4,6 +4,8 @@
   "commit": false,
   "fixed": [],
   "linked": [],
+  "changedFilePatterns": ["src/**"],
+  "format": "auto",
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",

@@ -1,7 +1,7 @@
 {
-  "name": "@leptoquark1/ts-aoe-pathfinder",
+  "name": "@leptoquark1/openage-pfadfinder",
   "version": "0.1.0",
-  "description": "OpenAge's Pathfinding TypeScript Port",
+  "description": "openage Pfadfinder - A TypeScript port of the Pathfinding Subsystem",
   "keywords": [
     "a-star",
     "age-of-empires",
@@ -11,17 +11,21 @@
     "pathfinding",
     "typescript"
   ],
-  "homepage": "https://github.com/leptoquark1/ts-aoe-pathfinder#readme",
+  "homepage": "https://github.com/leptoquark1/openage-pfadfinder#readme",
   "bugs": {
-    "url": "https://github.com/leptoquark1/ts-aoe-pathfinder/issues"
+    "url": "https://github.com/leptoquark1/openage-pfadfinder/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/leptoquark1/ts-aoe-pathfinder.git"
+    "url": "git+https://github.com/leptoquark1/openage-pfadfinder.git"
   },
   "license": "GPL-3.0-or-later",
-  "author": "leptoquark1",
+  "author": "David Fecke (leptoquark1)",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.15.0",
   "sideEffects": false,
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -31,6 +35,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "import": "./dist/shared/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -38,10 +46,6 @@
     "LICENSE",
     "README.md"
   ],
-  "engines": {
-    "node": ">=22.12.0"
-  },
-  "packageManager": "pnpm@11.15.0",
   "publishConfig": {
     "access": "public"
   },
@@ -49,9 +53,8 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "format": "biome format --write .",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -65,12 +68,16 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
-    "@biomejs/biome": "2.6.4",
     "@changesets/cli": "3.0.3",
-    "@types/node": "22.20.5",
+    "@stylistic/eslint-plugin": "5.10.0",
+    "@types/node": "26.6.6",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/coverage-v8": "5.0.5",
+    "changeset-conventional-commits": "^1.0.4",
+    "eslint": "10.14.0",
     "publint": "0.3.25",
-    "typescript": "7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "8.72.1",
     "vite": "8.3.5",
     "vitest": "5.0.5"
   }

@@ -1,0 +1,4 @@
+minimumReleaseAgeExclude:
+  - minimatch@11.0.1
+overrides:
+  minimatch@<11.0.1: ^11.0.1
