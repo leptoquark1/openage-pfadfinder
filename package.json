@@ -1,7 +1,7 @@
 {
   "name": "@leptoquark1/openage-pfadfinder",
   "version": "1.0.0",
-  "description": "openage Pfadfinder - A TypeScript port of the Pathfinding Subsystem",
+  "description": "TypeScript port of the Pathfinding Subsystem",
   "keywords": [
     "a-star",
     "age-of-empires",
