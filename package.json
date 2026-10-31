@@ -1,0 +1,77 @@
+{
+  "name": "@leptoquark1/ts-aoe-pathfinder",
+  "version": "0.1.0",
+  "description": "OpenAge's Pathfinding TypeScript Port",
+  "keywords": [
+    "a-star",
+    "age-of-empires",
+    "esm",
+    "grid",
+    "openage",
+    "pathfinding",
+    "typescript"
+  ],
+  "homepage": "https://github.com/leptoquark1/ts-aoe-pathfinder#readme",
+  "bugs": {
+    "url": "https://github.com/leptoquark1/ts-aoe-pathfinder/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leptoquark1/ts-aoe-pathfinder.git"
+  },
+  "license": "GPL-3.0-or-later",
+  "author": "leptoquark1",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@11.15.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check:package": "publint && attw --pack . --profile esm-only",
+    "check": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm check:package",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish",
+    "prepublishOnly": "pnpm check"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@biomejs/biome": "2.6.4",
+    "@changesets/cli": "3.0.3",
+    "@types/node": "22.20.5",
+    "@vitest/coverage-v8": "5.0.5",
+    "publint": "0.3.25",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}
