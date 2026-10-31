@@ -1,48 +1,15 @@
 # openage Pfadfinder
 
-> openage Pfadfinder - A TypeScript port of the Pathfinding Subsystem
+[![npm](https://img.shields.io/npm/v/@leptoquark1/openage-pfadfinder)](https://www.npmjs.com/package/@leptoquark1/openage-pfadfinder)
+[![GitHub license](https://img.shields.io/github/license/leptoquark1/openage-pfadfinder)](https://github.com/leptoquark1/@leptoquark1/openage-pfadfinder)
+
+> TypeScript port of the Pathfinding Subsystem
 
 A dependency-free, native ESM TypeScript library implementing two-stage hierarchical flow-field
 pathfinding — a port of the [openage](https://github.com/SFTtech/openage) pathfinding system based on
 _Crowd Pathfinding and Steering Using Flow Field Tiles_ by Elijah Emerson.
 
-Learn more about Pathfinding [here](https://github.com/SFTtech/openage/tree/master/doc/code/pathfinding)
-
-## Architecture
-
-Two-stage hierarchical pathfinding:
-
-1. **High-Level (Portal A\*)** — A* search on the portal graph to find which sectors to traverse
-2. **Low-Level (Flow Fields)** — Per-sector cost → integration → flow field pipeline
-
-```text
-PathRequest → Grid → identify start/target sectors
-  → Portal A* (high-level path through sectors)
-  → Flow-Field integration per sector (low-level directions)
-  → Waypoint extraction
-  → Path returned
-```
-
-### Core Concepts
-
-| Component            | Description                                                                                   |
-| -------------------- | --------------------------------------------------------------------------------------------- |
-| **CostField**        | Per-cell movement cost (Uint8Array, 1–254 passable, 255 impassable)                           |
-| **IntegrationField** | Accumulated cost from target via wavefront + LOS (Uint16Array + Uint8Array flags)             |
-| **FlowField**        | Per-cell movement direction toward lowest-cost neighbor (Uint8Array, 4-bit dir + 4-bit flags) |
-| **Sector**           | Square grid subdivision with its own CostField + Portals                                      |
-| **Portal**           | Bidirectional gateway between adjacent sectors                                                |
-| **Grid**             | Collection of sectors, manages portal graph                                                   |
-| **Integrator**       | Orchestrates field computation with caching                                                   |
-| **Pathfinder**       | Main interface — `getPath()` coordinates both stages                                          |
-
-### Algorithms
-
-- **LOS Integration** — Wavefront with Bresenham line-of-sight shadowcasting
-- **Cost Integration** — Dijkstra-like wavefront expansion (4-connected)
-- **Flow Field Build** — Gradient descent on integration costs (8-connected)
-- **Portal A\*** — A* on the portal graph with Euclidean heuristic
-- **Field Caching** — Integration/flow fields cached per portal-sector pair
+Learn more about the underlying Pathfinding [here](https://github.com/SFTtech/openage/tree/master/doc/code/pathfinding)
 
 ## Installation
 
@@ -93,6 +60,42 @@ console.log(path.waypoints); // [{ ne: 2, se: 3 }, { ne: 12, se: 10 }, ...]
 ```
 
 For the full API reference — every class, field and helper with signatures — see [docs/API.md](docs/API.md).
+
+## Architecture
+
+Two-stage hierarchical pathfinding:
+
+1. **High-Level (Portal A\*)** — A* search on the portal graph to find which sectors to traverse
+2. **Low-Level (Flow Fields)** — Per-sector cost → integration → flow field pipeline
+
+```text
+PathRequest → Grid → identify start/target sectors
+  → Portal A* (high-level path through sectors)
+  → Flow-Field integration per sector (low-level directions)
+  → Waypoint extraction
+  → Path returned
+```
+
+### Core Concepts
+
+| Component            | Description                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| **CostField**        | Per-cell movement cost (Uint8Array, 1–254 passable, 255 impassable)                           |
+| **IntegrationField** | Accumulated cost from target via wavefront + LOS (Uint16Array + Uint8Array flags)             |
+| **FlowField**        | Per-cell movement direction toward lowest-cost neighbor (Uint8Array, 4-bit dir + 4-bit flags) |
+| **Sector**           | Square grid subdivision with its own CostField + Portals                                      |
+| **Portal**           | Bidirectional gateway between adjacent sectors                                                |
+| **Grid**             | Collection of sectors, manages portal graph                                                   |
+| **Integrator**       | Orchestrates field computation with caching                                                   |
+| **Pathfinder**       | Main interface — `getPath()` coordinates both stages                                          |
+
+### Algorithms
+
+- **LOS Integration** — Wavefront with Bresenham line-of-sight shadowcasting
+- **Cost Integration** — Dijkstra-like wavefront expansion (4-connected)
+- **Flow Field Build** — Gradient descent on integration costs (8-connected)
+- **Portal A\*** — A* on the portal graph with Euclidean heuristic
+- **Field Caching** — Integration/flow fields cached per portal-sector pair
 
 ## Performance
 
