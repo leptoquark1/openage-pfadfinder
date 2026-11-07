@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* Design tokens — kept in sync with COLORS in `theme.ts`, which the canvas uses. */
+@theme {
+    --color-bg: #0d1114;
+    --color-panel: #14181c;
+    --color-border: #242a30;
+    --color-border-strong: #333b43;
+    --color-fg: #e7ebee;
+    --color-muted: #8a95a1;
+    --color-grid: #1b2126;
+    --color-target: #f5a623;
+    --color-mob: #4fd1c5;
+    --color-obstacle: #fb7185;
+    --color-obstacle-moving: #fdba74;
+    --color-flow: #2a3138;
+    --color-section: #3f4957;
+    --color-divider: #3f4957;
+}
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--color-bg);
+}

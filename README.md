@@ -113,28 +113,31 @@ layout. The BinaryHeap provides O(log n) priority queue operations for A*.
 ## Project structure
 
 ```text
-src/index.ts          Public package entry point (subpath ".")
-src/lib/core/         Cost/integration/flow fields, integrator
-src/lib/graph/        Grid, Sector, Portal
-src/lib/internal/     BinaryHeap, Bresenham line
-src/lib/pathfinding/  Pathfinder, portal graph A*, field cache, routing
-src/shared/index.ts   Shared subpath entry (subpath "./shared")
-src/shared/           Constants, bit ops, coordinates, cost-map helpers, types
-test/                 Vitest test suite
-docs/                 API reference and release documentation
-.github/workflows/    CI and release automation
-.changeset/           Changesets configuration
+packages/pfadfinder/                  Published library (@leptoquark1/openage-pfadfinder)
+  src/index.ts                        Public package entry point (subpath ".")
+  src/lib/core/                       Cost/integration/flow fields, integrator
+  src/lib/graph/                      Grid, Sector, Portal
+  src/lib/internal/                   BinaryHeap, Bresenham line
+  src/lib/pathfinding/                Pathfinder, portal graph A*, field cache, routing
+  src/shared/index.ts                 Shared subpath entry (subpath "./shared")
+  src/shared/                         Constants, bit ops, coordinates, cost-map helpers, types
+  test/                               Vitest test suite
+apps/demo/                            Interactive playground (React + Vite, deployed to GitHub Pages)
+docs/                                 API reference and release documentation
+.github/workflows/                    CI and release automation
+.changeset/                           Changesets configuration
 ```
 
 ## Development
 
 ```bash
 pnpm install
+pnpm build       # library dist/, also needed by the demo's typecheck and tests
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm test:coverage
-pnpm build
+pnpm test:perf   # timing-sensitive demo benchmarks (excluded from `pnpm test`)
 pnpm check:package
 ```
 
@@ -142,6 +145,29 @@ Run everything that CI runs:
 
 ```bash
 pnpm check
+```
+
+### Demo
+
+An interactive playground showing the flow-field pathfinding in action: targets, roaming mobs, moving obstacles and a live
+performance panel.
+
+Running the demo requires a built library:
+
+```bash
+pnpm build
+```
+
+Run demo with:
+
+```bash
+pnpm --filter @leptoquark1/openage-pfadfinder-demo dev
+```
+
+Watch both with:
+
+```bash
+pnpm -r --parallel dev
 ```
 
 ## License
