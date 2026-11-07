@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Grid } from '../src/lib/graph/grid.js';
 import { Pathfinder } from '../src/lib/pathfinding/pathfinder.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { buildGrid } from '../src/shared/cost-map/cost-map.js';
@@ -39,6 +40,27 @@ function crosses(waypoints: readonly Waypoint[], ne: number, se: number): boolea
 }
 
 describe('Grid.updateCosts', () => {
+  it('does not reuse portal ids of sectors handed to the constructor', () => {
+    const size = 3 * SECTOR;
+    const source = buildGrid(
+      new Uint8Array(size * size).fill(COST_MIN),
+      { width: size, height: size },
+      SECTOR,
+      0,
+    );
+    const grid = new Grid(1, { width: 3, height: 3 }, source.getSectors());
+    grid.initPortalNodes();
+    grid.updateCosts([
+      { ne: 23, se: 7, cost: COST_IMPASSABLE },
+      { ne: 20, se: 7, cost: COST_IMPASSABLE },
+    ]);
+
+    const portals = new Set(grid.getSectors().flatMap(s => s.getPortals()));
+    const ids = new Set([...portals].map(p => p.getId()));
+    expect(ids.size).toBe(portals.size);
+    expect(grid.getPortalMap().size).toBe(portals.size);
+  });
+
   it('routes around a cell blocked after the grid was built', () => {
     const { grid, pf } = setup();
     const request = { gridId: 0, start: { ne: 2, se: 4 }, target: { ne: 13, se: 4 } };

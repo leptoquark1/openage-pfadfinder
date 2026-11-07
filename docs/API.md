@@ -245,7 +245,7 @@ class Integrator {
 }
 ```
 
-`getPortal()` is the cached variant used by the pathfinder: lookup by `makeCacheKey(portalId, otherSectorId)`, dirty-check against the cost field version (stale entries are evicted), and **copy-on-read** — returned fields are clones with dynamic flags reset, so callers may re-run LOS/mutation freely.
+`getPortal()` is the cached variant used by the pathfinder. Every cost field gets its own cache, held weakly, so grids never share entries and a replaced grid's cache is released with it. Within a cost field, entries are keyed by the portal's cell range and the sector it is entered from, not by the portal id. Once a cost field has been modified, its whole cache is cleared. Hits are **copy-on-read** — returned fields are clones with dynamic flags reset, so callers may re-run LOS/mutation freely.
 
 ## Field cache
 
@@ -257,6 +257,7 @@ interface CacheEntry {
 }
 
 class FieldCache {
+  version: number;            // cost field version the contents belong to (set by the owner)
   add(key, entry), evict(key): boolean, isCached(key): boolean, get(key);
   getIntegrationField(key), getFlowField(key);
   getCostFieldVersion(key), setCostFieldVersion(key, version);
@@ -267,7 +268,7 @@ class FieldCache {
 function makeCacheKey(portalId: number, sectorId: number): CacheKey; // "portalId:sectorId"
 ```
 
-Cached fields are stored with dynamic flags cleared (LOS, wavefront) — they must be recomputed on reuse, which `Integrator.getPortal()` does.
+`FieldCache` does no validation itself, and keys are only unique within one cost field: use one cache per cost field and check versions before reuse, as `Integrator` does. Cached fields are stored with dynamic flags cleared (LOS, wavefront) — they must be recomputed on reuse, which `Integrator.getPortal()` does.
 
 ## Path results
 
