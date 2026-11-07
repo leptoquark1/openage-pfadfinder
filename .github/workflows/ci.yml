@@ -24,30 +24,127 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: changed
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "verify=true" >> "$GITHUB_OUTPUT"
+            echo "release_changed=false" >> "$GITHUB_OUTPUT"
+            echo "changeset_added=false" >> "$GITHUB_OUTPUT"
+            echo "check_changesets=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Diff against the PR's actual base branch. --no-renames reports a rename
+          # as delete + add, so both the old and the new path are seen; no
+          # --diff-filter, so deletions count as changes too.
+          BASE="origin/$BASE_REF"
+          STATUS="$(git diff --name-status --no-renames "$(git merge-base "$BASE" HEAD)")"
+          FILES="$(printf '%s\n' "$STATUS" | cut -f2- | sed '/^$/d')"
+
+          echo "Changed files (vs $BASE):"
+          printf '%s\n' "$STATUS"
+
+          # Docs-only paths: everything else (src/, test/, apps/, configs, lockfile,
+          # workflows, ...) triggers the full verify run.
+          DOCS_ONLY_RE='(\.md$|^docs/|^LICENSE$)'
+          # Paths that change the published package and therefore need a changeset.
+          # Must match changedFilePatterns in .changeset/config.json.
+          RELEASE_RE='^(src/|package\.json$)'
+          CHANGESET_RE='^\.changeset/[^/]+\.md$'
+
+          # Capture matches instead of piping into `grep -q`: with pipefail, an early
+          # grep exit can SIGPIPE the producer and turn a match into a failure.
+          RELEASE_FILES="$(printf '%s\n' "$FILES" | grep -E "$RELEASE_RE" || true)"
+          NON_DOCS_FILES="$(printf '%s\n' "$FILES" | grep -vE "$DOCS_ONLY_RE" || true)"
+          # Only added/modified changesets count; deleting one never bumps a version.
+          ADDED_CHANGESETS="$(printf '%s\n' "$STATUS" \
+            | awk -F'\t' '$1 ~ /^[AM]$/ { print $2 }' \
+            | grep -E "$CHANGESET_RE" | grep -vE '^\.changeset/README\.md$' || true)"
+
+          if [ -n "$RELEASE_FILES" ]; then
+            echo "release_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Package changes always verify (and need the install for `changeset status`).
+          if [ -n "$NON_DOCS_FILES" ] || [ -n "$RELEASE_FILES" ]; then
+            echo "verify=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "verify=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Only documentation changed. Skipping dependency install and verify steps."
+          fi
+
+          if [ -n "$ADDED_CHANGESETS" ]; then
+            echo "changeset_added=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changeset_added=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # The version PR opened by the release workflow bumps package.json and
+          # consumes the changesets itself; the rules do not apply to it.
+          case "$HEAD_REF" in
+            changeset-release/*) echo "check_changesets=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "check_changesets=true" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Install pnpm
+        if: steps.changed.outputs.verify == 'true'
         uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
+        if: steps.changed.outputs.verify == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
 
       - name: Install dependencies
+        if: steps.changed.outputs.verify == 'true'
         run: pnpm install --frozen-lockfile
 
+      - name: Changeset rules
+        if: steps.changed.outputs.check_changesets == 'true'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          RELEASE_CHANGED: ${{ steps.changed.outputs.release_changed }}
+          CHANGESET_ADDED: ${{ steps.changed.outputs.changeset_added }}
+        run: |
+          set -euo pipefail
+
+          if [ "$RELEASE_CHANGED" = "true" ]; then
+            pnpm exec changeset status --since="origin/$BASE_REF" --verbose
+          elif [ "$CHANGESET_ADDED" = "true" ]; then
+            echo "::error::Changeset added or modified, but no files under src/ or package.json changed. Version bumps are only allowed for package changes."
+            exit 1
+          fi
+
       - name: Lint
+        if: steps.changed.outputs.verify == 'true'
         run: pnpm lint
 
       - name: Typecheck
+        if: steps.changed.outputs.verify == 'true'
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      - name: Test (with coverage thresholds)
+        if: steps.changed.outputs.verify == 'true'
+        run: pnpm test:coverage
 
       - name: Build
+        if: steps.changed.outputs.verify == 'true'
         run: pnpm build
 
       - name: Validate package
+        if: steps.changed.outputs.verify == 'true'
         run: pnpm check:package

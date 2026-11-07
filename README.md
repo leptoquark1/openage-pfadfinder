@@ -121,6 +121,7 @@ src/lib/pathfinding/  Pathfinder, portal graph A*, field cache, routing
 src/shared/index.ts   Shared subpath entry (subpath "./shared")
 src/shared/           Constants, bit ops, coordinates, cost-map helpers, types
 test/                 Vitest test suite
+docs/                 API reference and release documentation
 .github/workflows/    CI and release automation
 .changeset/           Changesets configuration
 ```
