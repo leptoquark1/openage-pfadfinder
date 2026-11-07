@@ -1,4 +1,5 @@
 import type { CacheKey } from '../../shared/types.js';
+import type { CostField } from '../core/cost-field.js';
 import type { FlowField } from '../core/flow-field.js';
 import type { IntegrationField } from '../core/integration-field.js';
 
@@ -6,6 +7,13 @@ export interface CacheEntry {
   readonly integrationField: IntegrationField
   readonly flowField: FlowField
   costFieldVersion: number
+  /**
+   * The cost field the entry was computed from. Keys repeat across grids
+   * (portal and sector ids start at 0 in every grid), so an entry is only
+   * valid for this very field; `costFieldVersion` alone cannot tell two
+   * fields apart.
+   */
+  readonly costField?: CostField
 }
 
 /**
@@ -14,8 +22,9 @@ export interface CacheEntry {
  * Cached fields have dynamic flags cleared (LOS, wavefront) —
  * these must be recomputed when a field is reused.
  *
- * Dirty tracking: each entry stores the cost-field version at cache time.
- * If the cost field has been modified since, the entry is evicted.
+ * Dirty tracking: each entry stores the cost field and its version at cache
+ * time. If the field is a different one (another grid, or a grid replaced
+ * under the same id) or has been modified since, the entry is evicted.
  */
 export class FieldCache {
   private cache: Map<CacheKey, CacheEntry> = new Map();
