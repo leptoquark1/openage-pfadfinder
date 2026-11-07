@@ -151,8 +151,58 @@ new Sector(id: SectorId, position: Vector2s, costField: CostField);
 getId(), getPosition(), getCostField();          // id, grid position { x, y }, the sector's field
 getPortals(): Portal[];                          // portals on this sector's edges (sorted by edge)
 addPortal(portal), removePortal(portal): boolean
-findPortals(other: Sector, direction: PortalDirection, nextId: PortalId): Portal[]  // create edge portals against a neighbor
+findPortals(                                     // portals on the shared edge with a neighbor
+  other: Sector,
+  direction: PortalDirection,
+  nextId: PortalId | (() => PortalId),           // first id, or an allocator called once per new portal
+  reuse?: readonly Portal[],                     // existing portals to return again when they span a found range
+): Portal[]
 connectExits();                                  // flood-fill passable exit cells across each portal into the other sector (4-connected)
+```
+
+#### Portal ids with `findPortals`
+
+`findPortals` scans the shared edge and returns one portal per contiguous passable range, in edge order. Only **new** portals take an id:
+
+- A range that one of the `reuse` portals already spans (`Portal.spans`) returns that same portal object, with its id and exits, and uses no id.
+- Every other range becomes a new `Portal`. With a number as `nextId` the new portals are numbered `nextId, nextId + 1, …`; with a function, it is called once per new portal.
+
+The return value does not say how many ids were used. Portals from `reuse` come back as they are, and with a number you cannot tell how far numbering got. So when several calls must not hand out the same id, pass an allocator rather than a number:
+
+```typescript
+let nextPortalId = 0;
+const allocate = () => nextPortalId++;
+
+// first build: every range is new
+const portals = sector.findPortals(right, PortalDirection.EAST_WEST, allocate);
+
+// after the cost fields changed: keep the portals that still span the same range
+const old = sector.getPortals().filter(p => p.getExitSector(sector.getId()) === right.getId());
+const updated = sector.findPortals(right, PortalDirection.EAST_WEST, allocate, old);
+// in `updated`: portals from `old` are kept, new ranges have fresh ids,
+// portals from `old` that are missing no longer exist on this edge.
+```
+
+When you need which parameter:
+
+| Situation | `nextId` | `reuse` |
+| --------- | -------- | ------- |
+| Single call, or ids do not matter (tests, one-off scans) | number | — |
+| Several calls with ids that must stay unique (whole grid, repeated rebuilds) | allocator | — |
+| Recompute an edge after a cost change and keep unchanged portals (identity, exits, cached fields) | allocator | old portals of that edge |
+
+`Grid.initPortals()` and `Grid.rebuildPortals()` use one shared allocator for this, so code that builds grids through `Grid` needs no changes.
+
+**Migrating:** existing calls with a number keep working unchanged. Code that called `findPortals` with a number and then counted ids itself (`nextId += found.length` or `nextId++` per portal) should pass an allocator and drop the counting. Code that matched the result against old portals with `matches()` and threw the fresh copies away should pass the old portals as `reuse` and use the result directly:
+
+```typescript
+// before
+const found = sector.findPortals(other, dir, nextId);
+nextId += found.length;                          // also uses up ids for copies that get thrown away
+const result = found.map(p => old.find(o => o.matches(p)) ?? p);
+
+// after
+const result = sector.findPortals(other, dir, () => nextId++, old);
 ```
 
 ### `Portal`
@@ -167,7 +217,8 @@ getId(), getDirection();
 getConnected(sectorId): Portal[];   // portals reachable across this edge from that side
 getExits(sectorId): Portal[];       // exit cells' neighbor portals on that side (set by Sector.connectExits)
 setExits(sectorId, exits);          getExitSector(sectorId): SectorId;
-matches(other: Portal): boolean;    // same edge & direction (id-independent comparison for rebuilds)
+matches(other: Portal): boolean;    // same sectors, direction and cell range (id-independent comparison for rebuilds)
+spans(sector0, sector1, direction, cellStart, cellEnd): boolean;  // same check against a bare range, before a portal exists for it
 
 // entry/exit geometry in the local frame of `sectorId` (start → end along the portal's axis):
 getEntryStart/getEntryCenter/getEntryEnd(sectorId): TileDelta  // where a route enters this sector through the portal
