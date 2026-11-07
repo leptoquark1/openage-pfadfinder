@@ -92,14 +92,35 @@ export class Portal {
    * portal's identity across incremental rebuilds.
    */
   matches(other: Portal): boolean {
+    return this.spans(
+      other.sector0,
+      other.sector1,
+      other.direction,
+      other.cellStart,
+      other.cellEnd,
+    );
+  }
+
+  /**
+   * True when this portal spans exactly the given range between the given
+   * sectors. Lets a candidate range be compared before a portal (and an id)
+   * is created for it.
+   */
+  spans(
+    sector0: SectorId,
+    sector1: SectorId,
+    direction: PortalDirection,
+    cellStart: TileDelta,
+    cellEnd: TileDelta,
+  ): boolean {
     return (
-      this.direction === other.direction
-      && this.sector0 === other.sector0
-      && this.sector1 === other.sector1
-      && this.cellStart.ne === other.cellStart.ne
-      && this.cellStart.se === other.cellStart.se
-      && this.cellEnd.ne === other.cellEnd.ne
-      && this.cellEnd.se === other.cellEnd.se
+      this.direction === direction
+      && this.sector0 === sector0
+      && this.sector1 === sector1
+      && this.cellStart.ne === cellStart.ne
+      && this.cellStart.se === cellStart.se
+      && this.cellEnd.ne === cellEnd.ne
+      && this.cellEnd.se === cellEnd.se
     );
   }
 

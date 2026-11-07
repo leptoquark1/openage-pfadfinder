@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { Grid } from '../src/lib/graph/grid.js';
 import { Pathfinder } from '../src/lib/pathfinding/pathfinder.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { buildGrid } from '../src/shared/cost-map/cost-map.js';
 import { PathResult, type Waypoint } from '../src/shared/types.js';
+import { followRoute, makeRandom } from './helpers.js';
 
 const SECTOR = 8;
 const SIZE = SECTOR * 2;
@@ -39,6 +41,27 @@ function crosses(waypoints: readonly Waypoint[], ne: number, se: number): boolea
 }
 
 describe('Grid.updateCosts', () => {
+  it('does not reuse portal ids of sectors handed to the constructor', () => {
+    const size = 3 * SECTOR;
+    const source = buildGrid(
+      new Uint8Array(size * size).fill(COST_MIN),
+      { width: size, height: size },
+      SECTOR,
+      0,
+    );
+    const grid = new Grid(1, { width: 3, height: 3 }, source.getSectors());
+    grid.initPortalNodes();
+    grid.updateCosts([
+      { ne: 23, se: 7, cost: COST_IMPASSABLE },
+      { ne: 20, se: 7, cost: COST_IMPASSABLE },
+    ]);
+
+    const portals = new Set(grid.getSectors().flatMap(s => s.getPortals()));
+    const ids = new Set([...portals].map(p => p.getId()));
+    expect(ids.size).toBe(portals.size);
+    expect(grid.getPortalMap().size).toBe(portals.size);
+  });
+
   it('routes around a cell blocked after the grid was built', () => {
     const { grid, pf } = setup();
     const request = { gridId: 0, start: { ne: 2, se: 4 }, target: { ne: 13, se: 4 } };
@@ -73,5 +96,101 @@ describe('Grid.updateCosts', () => {
         { ne: SIZE, se: 0, cost: COST_IMPASSABLE },
       ]).size,
     ).toBe(0);
+  });
+
+  it('still finds a route after border portals were split and shrunk', () => {
+    const sectors = 3;
+    const cells = SECTOR * sectors;
+    const costs = new Uint8Array(cells * cells).fill(COST_MIN);
+    const grid = buildGrid(costs.slice(), { width: cells, height: cells }, SECTOR, 0);
+    const pf = new Pathfinder();
+    pf.addGrid(grid);
+    const block = (...cells2: [number, number][]) => {
+      const changes = cells2.map(([ne, se]) => ({ ne, se, cost: COST_IMPASSABLE }));
+      for (const { ne, se } of changes) {
+        costs[ne + se * cells] = COST_IMPASSABLE;
+      }
+      grid.updateCosts(changes);
+    };
+    const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+
+    // Only the top sector row stays connected: wall along its lower border.
+    block(...range(0, cells - 1).map(ne => [ne, SECTOR] as [number, number]));
+    // Border ne=7|8: split into se 0..4 and 6..7, then shrink the lower run
+    // to se 7, so a surviving portal precedes a new one.
+    block([7, 5]);
+    block([7, 6]);
+    // Border ne=15|16: split, which hands out fresh ids.
+    block([15, 3]);
+    // Leave a single way through each border: se 7 and se 0..2.
+    block(...range(0, 4).map(se => [7, se] as [number, number]));
+    block(...range(4, 7).map(se => [15, se] as [number, number]));
+
+    const fresh = new Pathfinder();
+    fresh.addGrid(buildGrid(costs, { width: cells, height: cells }, SECTOR, 0));
+    for (const [start, target] of [
+      [{ ne: 1, se: 1 }, { ne: 20, se: 1 }],
+      [{ ne: 20, se: 6 }, { ne: 2, se: 3 }],
+    ] as const) {
+      const request = { gridId: 0, start, target };
+      expect(fresh.getFlowRoute(request)).not.toBeNull();
+      expect(pf.getFlowRoute(request)).not.toBeNull();
+    }
+  });
+
+  it('matches a freshly built grid after hundreds of random updates', () => {
+    const sectors = 4;
+    const cells = SECTOR * sectors;
+    const rand = makeRandom(4242);
+    const pick = (n: number) => Math.floor(rand() * n);
+
+    const costs = new Uint8Array(cells * cells).fill(COST_MIN);
+    const grid = buildGrid(costs.slice(), { width: cells, height: cells }, SECTOR, 0);
+    const pf = new Pathfinder();
+    pf.addGrid(grid);
+
+    for (let step = 0; step < 300; step++) {
+      // a short wall piece on a random sector border
+      const vertical = rand() < 0.5;
+      const border = (1 + pick(sectors - 1)) * SECTOR - pick(2);
+      const from = pick(cells);
+      const length = 1 + pick(3);
+      const cost = rand() < 0.55 ? COST_IMPASSABLE : COST_MIN;
+      const changes: { ne: number, se: number, cost: number }[] = [];
+      for (let i = 0; i < length && from + i < cells; i++) {
+        const [ne, se] = vertical ? [border, from + i] : [from + i, border];
+        costs[ne + se * cells] = cost;
+        changes.push({ ne, se, cost });
+      }
+      grid.updateCosts(changes);
+
+      const ids = grid.getSectors().flatMap(s => s.getPortals()).map(p => p.getId());
+      const portals = new Set(grid.getSectors().flatMap(s => s.getPortals()));
+      expect(new Set(ids).size, `step ${step}`).toBe(portals.size);
+      expect(grid.getPortalMap().size, `step ${step}`).toBe(portals.size);
+
+      const fresh = new Pathfinder();
+      fresh.addGrid(buildGrid(costs, { width: cells, height: cells }, SECTOR, 0));
+      for (let k = 0; k < 4; k++) {
+        const request = {
+          gridId: 0,
+          start: { ne: pick(cells), se: pick(cells) },
+          target: { ne: pick(cells), se: pick(cells) },
+        };
+        const label = `step ${step} ${JSON.stringify(request)}`;
+        const route = pf.getFlowRoute(request);
+        expect(route !== null, label).toBe(fresh.getFlowRoute(request) !== null);
+        // A start on a wall has nowhere to walk from.
+        if (!route || costs[request.start.ne + request.start.se * cells] === COST_IMPASSABLE) {
+          continue;
+        }
+        // The route must actually lead there, over passable cells only.
+        const walked = followRoute(route, request.start, cells * cells);
+        expect(walked.at(-1), label).toEqual(request.target);
+        for (const { ne, se } of walked) {
+          expect(costs[ne + se * cells], `${label} at ${ne},${se}`).not.toBe(COST_IMPASSABLE);
+        }
+      }
+    }
   });
 });
