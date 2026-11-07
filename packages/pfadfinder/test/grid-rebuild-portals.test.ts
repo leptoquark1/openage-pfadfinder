@@ -110,8 +110,7 @@ describe('Grid.rebuildPortals incremental update', () => {
     grid.initPortals();
     grid.initPortalNodes();
 
-    // Row 6 closes: rows 0..4 survive, rows 7..7 become a new portal that
-    // findPortals numbered after the survivor.
+    // Row 6 closes: rows 0..4 survive, rows 7..7 become a new portal.
     sector0.getCostField().setCost(size - 1, 6, COST_IMPASSABLE);
     grid.rebuildPortals([sector0]);
     grid.rebuildPortalNodes();
@@ -126,5 +125,35 @@ describe('Grid.rebuildPortals incremental update', () => {
     expect(portals.size).toBe(4);
     expect(ids.size).toBe(portals.size);
     expect(grid.getPortalMap().size).toBe(portals.size);
+  });
+
+  it('gives ids only to new portals, not to survivors found again', () => {
+    const size = 8;
+    const grid = new Grid(0, { width: 2, height: 1 }, size);
+    const sectors = [0, 1].map(i => new Sector(i, { x: i, y: 0 }, fullCostField(size)));
+    for (const sector of sectors) {
+      grid.addSector(sector);
+    }
+    const [sector0] = sectors as [Sector, Sector];
+
+    // Border 0|1 starts with two portals: rows 0..4 and 6..7 → ids 0 and 1.
+    sector0.getCostField().setCost(size - 1, 5, COST_IMPASSABLE);
+    grid.initPortals();
+    grid.initPortalNodes();
+    expect(sector0.getPortals().map(p => p.getId())).toEqual([0, 1]);
+
+    // Rebuilds that find the same portals again must not use up ids.
+    for (let i = 0; i < 3; i++) {
+      sector0.getCostField().setCost(2, i, COST_IMPASSABLE);
+      grid.rebuildPortals([sector0]);
+      grid.rebuildPortalNodes();
+    }
+    expect(sector0.getPortals().map(p => p.getId())).toEqual([0, 1]);
+
+    // Row 2 closes: rows 0..1 and 3..4 are new, rows 6..7 survive.
+    sector0.getCostField().setCost(size - 1, 2, COST_IMPASSABLE);
+    grid.rebuildPortals([sector0]);
+    grid.rebuildPortalNodes();
+    expect(sector0.getPortals().map(p => p.getId()).sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 });

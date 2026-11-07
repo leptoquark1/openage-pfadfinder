@@ -62,95 +62,60 @@ export class Sector {
   /**
    * Find portals along the edge between this sector and a neighbor.
    * Scans the shared edge for contiguous passable cell ranges.
+   *
+   * `nextId` is either the first id to number new portals from, or an
+   * allocator called once per new portal. A found range that one of the
+   * `reuse` portals already spans returns that portal instead, without
+   * taking an id — `Grid.rebuildPortals()` uses this to keep survivors.
    */
-  findPortals(other: Sector, direction: PortalDirection, nextId: PortalId): Portal[] {
+  findPortals(
+    other: Sector,
+    direction: PortalDirection,
+    nextId: PortalId | (() => PortalId),
+    reuse: readonly Portal[] = [],
+  ): Portal[] {
+    let firstId = typeof nextId === 'number' ? nextId : 0;
+    const allocate = typeof nextId === 'number' ? () => firstId++ : nextId;
     const size = this.costField.getSize();
     const otherCostField = other.getCostField();
+    const northSouth = direction === PortalDirection.NORTH_SOUTH;
     const portals: Portal[] = [];
 
-    if (direction === PortalDirection.NORTH_SOUTH) {
-      // this is north of other → scan bottom edge of this / top edge of other
-      const yThis = size - 1;
-      const yOther = 0;
-      let runStart = -1;
+    // this is north/west of other → scan the bottom/right edge of this and
+    // the top/left edge of other.
+    const edge = size - 1;
+    const emit = (from: number, to: number): void => {
+      const cellStart = northSouth ? { ne: from, se: edge } : { ne: edge, se: from };
+      const cellEnd = northSouth ? { ne: to, se: edge } : { ne: edge, se: to };
+      const previous = reuse.find(p =>
+        p.spans(this.id, other.getId(), direction, cellStart, cellEnd),
+      );
+      portals.push(
+        previous ?? new Portal(allocate(), this.id, other.getId(), direction, cellStart, cellEnd),
+      );
+    };
 
-      for (let x = 0; x < size; x++) {
-        const thisPassable = this.costField.getCost(x, yThis) !== COST_IMPASSABLE;
-        const otherPassable = otherCostField.getCost(x, yOther) !== COST_IMPASSABLE;
-        const passable = thisPassable && otherPassable;
+    let runStart = -1;
+    for (let i = 0; i < size; i++) {
+      const thisPassable = northSouth
+        ? this.costField.getCost(i, edge) !== COST_IMPASSABLE
+        : this.costField.getCost(edge, i) !== COST_IMPASSABLE;
+      const otherPassable = northSouth
+        ? otherCostField.getCost(i, 0) !== COST_IMPASSABLE
+        : otherCostField.getCost(0, i) !== COST_IMPASSABLE;
+      const passable = thisPassable && otherPassable;
 
-        if (passable && runStart < 0) {
-          runStart = x;
-        }
-        else if (!passable && runStart >= 0) {
-          portals.push(
-            new Portal(
-              nextId++,
-              this.id,
-              other.getId(),
-              PortalDirection.NORTH_SOUTH,
-              { ne: runStart, se: yThis },
-              { ne: x - 1, se: yThis },
-            ),
-          );
-          runStart = -1;
-        }
+      if (passable && runStart < 0) {
+        runStart = i;
       }
-
-      if (runStart >= 0) {
-        portals.push(
-          new Portal(
-            nextId++,
-            this.id,
-            other.getId(),
-            PortalDirection.NORTH_SOUTH,
-            { ne: runStart, se: yThis },
-            { ne: size - 1, se: yThis },
-          ),
-        );
+      else if (!passable && runStart >= 0) {
+        emit(runStart, i - 1);
+        runStart = -1;
       }
     }
-    else {
-      // EAST_WEST: this is west of other → scan right edge of this / left edge of other
-      const xThis = size - 1;
-      const xOther = 0;
-      let runStart = -1;
 
-      for (let y = 0; y < size; y++) {
-        const thisPassable = this.costField.getCost(xThis, y) !== COST_IMPASSABLE;
-        const otherPassable = otherCostField.getCost(xOther, y) !== COST_IMPASSABLE;
-        const passable = thisPassable && otherPassable;
-
-        if (passable && runStart < 0) {
-          runStart = y;
-        }
-        else if (!passable && runStart >= 0) {
-          portals.push(
-            new Portal(
-              nextId++,
-              this.id,
-              other.getId(),
-              PortalDirection.EAST_WEST,
-              { ne: xThis, se: runStart },
-              { ne: xThis, se: y - 1 },
-            ),
-          );
-          runStart = -1;
-        }
-      }
-
-      if (runStart >= 0) {
-        portals.push(
-          new Portal(
-            nextId++,
-            this.id,
-            other.getId(),
-            PortalDirection.EAST_WEST,
-            { ne: xThis, se: runStart },
-            { ne: xThis, se: size - 1 },
-          ),
-        );
-      }
+    if (runStart >= 0) {
+      emit(runStart, size - 1);
     }
 
     return portals;
