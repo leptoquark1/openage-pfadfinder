@@ -13,17 +13,17 @@
     },
     "dependencies": {
         "@leptoquark1/openage-pfadfinder": "workspace:*",
-        "lucide-react": "^1.37.0",
-        "react": "^19.2.8",
-        "react-dom": "^19.2.8"
+        "lucide-react": "^1.70.0",
+        "react": "^19.3.1",
+        "react-dom": "^19.3.1"
     },
     "devDependencies": {
-        "@tailwindcss/vite": "^4.3.3",
-        "@types/react": "^19.2.18",
-        "@types/react-dom": "^19.2.5",
-        "@vitejs/plugin-react": "^4.7.0",
-        "tailwindcss": "^4.3.3",
-        "vite": "^6.0.7",
-        "vitest": "5.0.5"
+        "@tailwindcss/vite": "^4.3.5",
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0",
+        "@vitejs/plugin-react": "^6.2.1",
+        "tailwindcss": "^4.3.5",
+        "vite": "^8.3.6",
+        "vitest": "5.1.0"
     }
 }
