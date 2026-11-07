@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/leptoquark1/openage-pfadfinder/refs/heads/feat/demo-app/apps/demo/public/favicon.svg" alt="openage Pfadfinder logo" width="64" align="right">
+
 # openage Pfadfinder
 
 [![npm](https://img.shields.io/npm/v/@leptoquark1/openage-pfadfinder)](https://www.npmjs.com/package/@leptoquark1/openage-pfadfinder)
