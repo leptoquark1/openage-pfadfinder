@@ -4,6 +4,7 @@ import { FlowField } from '../src/lib/core/flow-field.js';
 import { IntegrationField } from '../src/lib/core/integration-field.js';
 import { FLOW_PATHABLE_MASK, INTEGRATED_COST_UNREACHABLE } from '../src/shared/constants.js';
 import { FlowDir } from '../src/shared/types.js';
+import { makeRandom } from './helpers.js';
 
 describe('IntegrationField', () => {
   it('creates field with correct size', () => {
@@ -184,11 +185,7 @@ describe('LOS integration on walled sectors', () => {
 
   /** Deterministic sector with random wall cells. */
   function randomCosts(seed: number): Uint8Array {
-    let state = seed >>> 0;
-    const rand = (): number => {
-      state = (state * 1664525 + 1013904223) >>> 0;
-      return state / 0x100000000;
-    };
+    const rand = makeRandom(seed);
     const costs = new Uint8Array(SIZE * SIZE).fill(1);
     for (let i = 0; i < costs.length; i++) {
       if (rand() < 0.3) {
