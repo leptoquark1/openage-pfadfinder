@@ -1,5 +1,16 @@
 # @leptoquark1/openage-pfadfinder
 
+## 1.1.0
+
+### Minor Changes
+
+- 3cb69f2: `Grid.rebuildPortals()` no longer uses up portal ids on portals that survive a rebuild; only new portals take an id. `Sector.findPortals()` accepts an id allocator `() => PortalId` instead of a start id, and an optional list of existing portals (`reuse`) that are returned again when they span a found range. `Portal.spans()` compares a portal with a cell range. Existing calls with a start id keep working; see "Portal ids with `findPortals`" in docs/API.md for when to use the new parameters and how to migrate.
+- ddd9e79: The portal field cache of a `Pathfinder` mixed up grids: with several grids, or a grid replaced under the same id via `addGrid()`, a route could follow a cached flow field of another grid and step onto impassable cells. Each cost field now has its own cache, keyed by the portal's cell range: several grids no longer evict each other's fields, and fields of dropped portals or replaced grids no longer pile up. `FieldCache` gains a `version` field for the cost field version its contents belong to.
+
+### Patch Changes
+
+- ddd9e79: `Grid.updateCosts()`/`rebuildPortals()` gave out portal ids twice after repeated updates, or right away for a grid built from existing sectors (`new Grid(id, size, sectors)`); routes could not be found until the grid was rebuilt.
+
 ## 1.0.0
 
 ### Major Changes
