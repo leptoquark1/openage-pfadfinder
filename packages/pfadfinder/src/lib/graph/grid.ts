@@ -132,6 +132,9 @@ export class Grid {
         dir === 0 ? PortalDirection.NORTH_SOUTH : PortalDirection.EAST_WEST,
         this.nextPortalId,
       );
+      // findPortals numbers every portal it finds; reserve them all, so a new
+      // portal never takes an id handed out before.
+      this.nextPortalId += found.length;
 
       // Match portals that span the same range so they keep identity and
       // exits; new portals get fresh ids, vanished ones are dropped.
@@ -143,7 +146,6 @@ export class Grid {
         }
         else {
           survivors.push(portal);
-          this.nextPortalId++;
         }
       }
 
