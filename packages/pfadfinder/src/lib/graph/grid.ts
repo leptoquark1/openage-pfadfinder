@@ -7,7 +7,6 @@ import {
   type Vector2s,
 } from '../../shared/types.js';
 import { PortalNode } from '../pathfinding/portal-graph.js';
-import type { Portal } from './portal.js';
 import type { Sector } from './sector.js';
 
 /**
@@ -21,6 +20,8 @@ export class Grid {
   private readonly sectors: Sector[] = [];
   private portalNodes: Map<PortalId, PortalNode> = new Map();
   private nextPortalId: PortalId = 0;
+  /** The single source of new portal ids for initPortals and rebuildPortals. */
+  private readonly allocatePortalId = (): PortalId => this.nextPortalId++;
 
   constructor(id: GridId, size: Size2s, sectorSize: number);
   constructor(id: GridId, size: Size2s, sectors: Sector[]);
@@ -133,27 +134,14 @@ export class Grid {
           this.isEdgePortal(p.getSector0(), p.getSector1(), sector.getId(), other.getId()),
         );
 
-      const found = sector.findPortals(
+      // Ranges an old portal already spans keep that portal (identity and
+      // exits); only new ranges take an id. Vanished ones are dropped below.
+      const survivors = sector.findPortals(
         other,
         dir === 0 ? PortalDirection.NORTH_SOUTH : PortalDirection.EAST_WEST,
-        this.nextPortalId,
+        this.allocatePortalId,
+        oldPortals,
       );
-      // findPortals numbers every portal it finds; reserve them all, so a new
-      // portal never takes an id handed out before.
-      this.nextPortalId += found.length;
-
-      // Match portals that span the same range so they keep identity and
-      // exits; new portals get fresh ids, vanished ones are dropped.
-      const survivors: Portal[] = [];
-      for (const portal of found) {
-        const previous = oldPortals.find(p => p.matches(portal));
-        if (previous) {
-          survivors.push(previous);
-        }
-        else {
-          survivors.push(portal);
-        }
-      }
 
       for (const portal of oldPortals) {
         if (!survivors.includes(portal)) {
@@ -235,12 +223,11 @@ export class Grid {
             const portals = sector.findPortals(
               below,
               PortalDirection.NORTH_SOUTH,
-              this.nextPortalId,
+              this.allocatePortalId,
             );
             for (const portal of portals) {
               sector.addPortal(portal);
               below.addPortal(portal);
-              this.nextPortalId++;
             }
           }
         }
@@ -249,11 +236,14 @@ export class Grid {
         if (x < this.size.width - 1) {
           const right = this.getSector(x + 1, y);
           if (right) {
-            const portals = sector.findPortals(right, PortalDirection.EAST_WEST, this.nextPortalId);
+            const portals = sector.findPortals(
+              right,
+              PortalDirection.EAST_WEST,
+              this.allocatePortalId,
+            );
             for (const portal of portals) {
               sector.addPortal(portal);
               right.addPortal(portal);
-              this.nextPortalId++;
             }
           }
         }
