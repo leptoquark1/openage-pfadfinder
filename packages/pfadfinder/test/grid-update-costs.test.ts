@@ -4,6 +4,7 @@ import { Pathfinder } from '../src/lib/pathfinding/pathfinder.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { buildGrid } from '../src/shared/cost-map/cost-map.js';
 import { PathResult, type Waypoint } from '../src/shared/types.js';
+import { followRoute, makeRandom } from './helpers.js';
 
 const SECTOR = 8;
 const SIZE = SECTOR * 2;
@@ -140,11 +141,7 @@ describe('Grid.updateCosts', () => {
   it('matches a freshly built grid after hundreds of random updates', () => {
     const sectors = 4;
     const cells = SECTOR * sectors;
-    let state = 4242;
-    const rand = () => {
-      state = (state * 1664525 + 1013904223) >>> 0;
-      return state / 0x100000000;
-    };
+    const rand = makeRandom(4242);
     const pick = (n: number) => Math.floor(rand() * n);
 
     const costs = new Uint8Array(cells * cells).fill(COST_MIN);
@@ -180,8 +177,19 @@ describe('Grid.updateCosts', () => {
           start: { ne: pick(cells), se: pick(cells) },
           target: { ne: pick(cells), se: pick(cells) },
         };
-        expect(pf.getFlowRoute(request) !== null, `step ${step} ${JSON.stringify(request)}`)
-          .toBe(fresh.getFlowRoute(request) !== null);
+        const label = `step ${step} ${JSON.stringify(request)}`;
+        const route = pf.getFlowRoute(request);
+        expect(route !== null, label).toBe(fresh.getFlowRoute(request) !== null);
+        // A start on a wall has nowhere to walk from.
+        if (!route || costs[request.start.ne + request.start.se * cells] === COST_IMPASSABLE) {
+          continue;
+        }
+        // The route must actually lead there, over passable cells only.
+        const walked = followRoute(route, request.start, cells * cells);
+        expect(walked.at(-1), label).toEqual(request.target);
+        for (const { ne, se } of walked) {
+          expect(costs[ne + se * cells], `${label} at ${ne},${se}`).not.toBe(COST_IMPASSABLE);
+        }
       }
     }
   });
