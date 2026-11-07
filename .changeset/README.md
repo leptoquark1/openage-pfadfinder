@@ -1,12 +1,11 @@
 # Changesets
 
-This folder is managed by [Changesets](https://github.com/changesets/changesets).
+This folder is managed by [Changesets](https://github.com/changesets/changesets) and holds
+pending changesets (`.changeset/*.md`).
 
-Add a changeset for every user-facing change:
+**Rule:** the version only changes for package changes (`src/` and `package.json`) —
+package changes require a changeset, and a PR that adds a changeset without package
+changes fails CI.
 
-```bash
-pnpm changeset
-```
-
-Commit the generated Markdown file together with your change. The release workflow will open a
-versioning pull request and publish the package after it is merged.
+The full release flow, commands and configuration are documented in
+[docs/RELEASING.md](../docs/RELEASING.md).

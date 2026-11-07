@@ -4,7 +4,7 @@
   "commit": false,
   "fixed": [],
   "linked": [],
-  "changedFilePatterns": ["src/**"],
+  "changedFilePatterns": ["src/**", "package.json"],
   "format": "auto",
   "access": "public",
   "baseBranch": "main",
