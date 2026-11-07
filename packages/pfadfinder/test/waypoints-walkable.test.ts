@@ -2,23 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { CostField } from '../src/lib/core/cost-field.js';
 import { Grid } from '../src/lib/graph/grid.js';
 import { Sector } from '../src/lib/graph/sector.js';
-import type { FlowRoute } from '../src/lib/pathfinding/flow-route.js';
 import { Pathfinder } from '../src/lib/pathfinding/pathfinder.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { PathResult, type Waypoint } from '../src/shared/types.js';
+import { followRoute, makeRandom } from './helpers.js';
 
 const SECTOR_SIZE = 16;
 const SECTORS = 4;
 const CELLS = SECTOR_SIZE * SECTORS;
-
-/** Deterministic LCG so failures are reproducible. */
-function makeRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 0x100000000;
-  };
-}
 
 /** Global cost map with a lake and wall segments that straddle sector borders. */
 function makeCosts(seed: number): Uint8Array {
@@ -158,19 +149,6 @@ describe('getPath() waypoints stay on walkable cells', () => {
   }
 });
 
-/** Follow `FlowRoute.next()` from `from`; the visited cells, ending where `next()` returns null. */
-function followRoute(route: FlowRoute, from: Waypoint): Waypoint[] {
-  const cells = [from];
-  let cell: Waypoint | null = from;
-  for (let n = 0; n < CELLS * CELLS && cell; n++) {
-    cell = route.next(cell.ne, cell.se);
-    if (cell) {
-      cells.push(cell);
-    }
-  }
-  return cells;
-}
-
 describe('getFlowRoute() leads every unit on the route to the target', () => {
   for (const seed of [1, 7, 42, 1337, 9001]) {
     it(`seed ${seed}: next() reaches the target over walkable cells, also from other cells of the route`, () => {
@@ -202,7 +180,7 @@ describe('getFlowRoute() leads every unit on the route to the target', () => {
           }
         }
         for (const from of [start, ...others]) {
-          const cells = followRoute(route!, from);
+          const cells = followRoute(route!, from, CELLS * CELLS);
           expect(cells.at(-1), `${label} from=${from.ne},${from.se}`).toEqual(target);
           for (let i = 1; i < cells.length; i++) {
             expect(

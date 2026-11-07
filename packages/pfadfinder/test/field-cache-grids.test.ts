@@ -3,6 +3,7 @@ import { Integrator } from '../src/lib/core/integrator.js';
 import { Pathfinder } from '../src/lib/pathfinding/pathfinder.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { buildGrid } from '../src/shared/cost-map/cost-map.js';
+import { followRoute } from './helpers.js';
 
 const SECTOR = 8;
 const SIZE = SECTOR * 2;
@@ -30,17 +31,7 @@ const build = (costs: Uint8Array, gridId: number) =>
 function follow(pf: Pathfinder, gridId: number): { ne: number, se: number }[] {
   const route = pf.getFlowRoute({ gridId, start: START, target: TARGET });
   expect(route).not.toBeNull();
-  const cells: { ne: number, se: number }[] = [];
-  let pos = START;
-  for (let i = 0; i < 4 * SIZE && (pos.ne !== TARGET.ne || pos.se !== TARGET.se); i++) {
-    const next = route!.next(pos.ne, pos.se);
-    if (!next || (next.ne === pos.ne && next.se === pos.se)) {
-      break;
-    }
-    cells.push(next);
-    pos = next;
-  }
-  return cells;
+  return followRoute(route!, START, 4 * SIZE).slice(1);
 }
 
 function expectAroundWall(costs: Uint8Array, cells: { ne: number, se: number }[]): void {
