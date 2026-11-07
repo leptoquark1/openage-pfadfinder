@@ -19,8 +19,9 @@ export interface IntegrationFlowPair {
  * any re-integration (LOS re-run, flag transfer) so the cache stays
  * pristine for future lookups.
  *
- * Dirty tracking: cached entries store the cost-field version. If the
- * cost field has been modified since caching, the entry is evicted
+ * Dirty tracking: cached entries store the cost field and its version. If
+ * the entry was computed from another cost field (cache keys repeat across
+ * grids) or the field has been modified since caching, the entry is evicted
  * and recomputed.
  */
 export class Integrator {
@@ -130,18 +131,18 @@ export class Integrator {
   ): IntegrationFlowPair {
     const key = makeCacheKey(portal.getId(), otherSectorId);
 
-    if (this.cache.isCached(key)) {
-      const cachedVersion = this.cache.getCostFieldVersion(key)!;
-
-      // Dirty check — evict if cost field has been modified
-      if (costField.isDirty(cachedVersion)) {
+    const entry = this.cache.get(key);
+    if (entry) {
+      // Dirty check — evict if the entry belongs to another cost field (keys
+      // repeat across grids) or the cost field has been modified
+      const foreign = entry.costField !== undefined && entry.costField !== costField;
+      if (foreign || costField.isDirty(entry.costFieldVersion)) {
         this.cache.evict(key);
       }
       else {
         // Copy-on-read: clone the cached fields before mutating
-        const cached = this.cache.get(key)!;
-        const integrationCopy = cached.integrationField.clone();
-        const flowCopy = cached.flowField.clone();
+        const integrationCopy = entry.integrationField.clone();
+        const flowCopy = entry.flowField.clone();
 
         integrationCopy.resetDynamicFlags();
         flowCopy.resetDynamicFlags();
@@ -174,6 +175,7 @@ export class Integrator {
       integrationField: cachedIntegration,
       flowField: cachedFlow,
       costFieldVersion: costField.getVersion(),
+      costField,
     });
 
     return { integrationField, flowField };
