@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Integrator } from '../src/lib/core/integrator.js';
 import { Pathfinder } from '../src/lib/pathfinding/pathfinder.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { buildGrid } from '../src/shared/cost-map/cost-map.js';
@@ -71,12 +72,51 @@ describe('portal field cache across grids', () => {
   });
 
   it('still reuses fields within one grid', () => {
+    const integrate = vi.spyOn(Integrator.prototype, 'integratePortal');
     const pf = new Pathfinder();
     pf.addGrid(build(walled(), 0));
     follow(pf, 0);
-    const cached = pf.getCachedFieldCount();
-    expect(cached).toBeGreaterThan(0);
+    const computed = integrate.mock.calls.length;
+    expect(computed).toBeGreaterThan(0);
+    expect(pf.getCachedFieldCount()).toBe(computed);
+
     follow(pf, 0);
-    expect(pf.getCachedFieldCount()).toBe(cached);
+    expect(integrate.mock.calls.length).toBe(computed);
   });
+
+  it('keeps the fields of several grids side by side', () => {
+    const integrate = vi.spyOn(Integrator.prototype, 'integratePortal');
+    const pf = new Pathfinder();
+    pf.addGrid(build(open(), 0));
+    pf.addGrid(build(walled(), 1));
+    follow(pf, 0);
+    follow(pf, 1);
+    const computed = integrate.mock.calls.length;
+
+    for (let i = 0; i < 10; i++) {
+      follow(pf, i % 2);
+    }
+    expect(integrate.mock.calls.length).toBe(computed);
+  });
+
+  it('does not grow while a border cell toggles', () => {
+    const pf = new Pathfinder();
+    const grid = build(open(), 0);
+    pf.addGrid(grid);
+    // On the border between the start and target sectors: every toggle
+    // splits or merges the portal there, and the old portal is dropped.
+    const cell = { ne: 7, se: 2 };
+    const costs = open();
+    for (let i = 0; i < 100; i++) {
+      const cost = i % 2 === 0 ? COST_IMPASSABLE : COST_MIN;
+      costs[cell.ne + cell.se * SIZE] = cost;
+      grid.updateCosts([{ ...cell, cost }]);
+      expectAroundWall(costs, follow(pf, 0));
+    }
+    expect(pf.getCachedFieldCount()).toBeLessThanOrEqual(4);
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });

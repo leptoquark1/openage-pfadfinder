@@ -34,6 +34,12 @@ export class Grid {
     else {
       this.sectors = param;
       this.sectorSize = param[0]?.getCostField().getSize() ?? 10;
+      // Sectors may come with portals already; new ids must not reuse theirs.
+      for (const sector of param) {
+        for (const portal of sector.getPortals()) {
+          this.nextPortalId = Math.max(this.nextPortalId, portal.getId() + 1);
+        }
+      }
     }
   }
 
