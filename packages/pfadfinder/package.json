@@ -1,0 +1,72 @@
+{
+  "name": "@leptoquark1/openage-pfadfinder",
+  "version": "1.0.0",
+  "description": "TypeScript port of the Pathfinding Subsystem",
+  "keywords": [
+    "a-star",
+    "age-of-empires",
+    "esm",
+    "grid",
+    "openage",
+    "pathfinding",
+    "typescript"
+  ],
+  "homepage": "https://github.com/leptoquark1/openage-pfadfinder#readme",
+  "bugs": {
+    "url": "https://github.com/leptoquark1/openage-pfadfinder/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leptoquark1/openage-pfadfinder.git"
+  },
+  "license": "GPL-3.0-or-later",
+  "author": "David Fecke (leptoquark1)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "import": "./dist/shared/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepack": "node -e \"for (const f of ['README.md', 'LICENSE']) fs.copyFileSync('../../' + f, f)\"",
+    "check:package": "publint && attw --pack . --profile esm-only",
+    "prepublishOnly": "pnpm -w run check"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@types/node": "26.6.6",
+    "@vitest/coverage-v8": "5.0.5",
+    "publint": "0.3.25",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

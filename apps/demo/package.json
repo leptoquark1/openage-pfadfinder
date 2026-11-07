@@ -1,0 +1,29 @@
+{
+    "name": "@leptoquark1/openage-pfadfinder-demo",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "test": "vitest run",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test:perf": "vitest run --config vitest.perf.config.ts"
+    },
+    "dependencies": {
+        "@leptoquark1/openage-pfadfinder": "workspace:*",
+        "lucide-react": "^1.37.0",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.3.3",
+        "@types/react": "^19.2.18",
+        "@types/react-dom": "^19.2.5",
+        "@vitejs/plugin-react": "^4.7.0",
+        "tailwindcss": "^4.3.3",
+        "vite": "^6.0.7",
+        "vitest": "5.0.5"
+    }
+}

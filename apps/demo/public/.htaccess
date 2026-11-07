@@ -1,0 +1,58 @@
+# Requires Apache 2.4+ (mod_rewrite, mod_headers, mod_expires, mod_deflate).
+# Optional: mod_brotli.
+
+Options -Indexes
+
+# Paths assume the app is served under /openage-pfadfinder/ — keep in sync
+# with `base` in vite.config.ts.
+
+# SPA fallback — every non-file route serves index.html
+<IfModule mod_rewrite.c>
+	RewriteEngine On
+	RewriteBase /openage-pfadfinder/
+	RewriteRule ^index\.html$ - [L]
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteRule . index.html [L]
+</IfModule>
+
+# Compression
+<IfModule mod_brotli.c>
+	AddOutputFilterByType BROTLI_COMPRESS text/html text/css application/javascript application/json image/svg+xml
+</IfModule>
+<IfModule mod_deflate.c>
+	AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml
+</IfModule>
+
+# Caching — <LocationMatch> is not allowed in .htaccess and ExpiresDefault
+# takes no env= clause, so the /assets/ distinction is made with <If>
+# expressions on %{REQUEST_URI} (Apache 2.4+).
+FileETag None
+
+# Content-hashed assets under /openage-pfadfinder/assets/: long-lived, immutable.
+<If "%{REQUEST_URI} =~ m#^/openage-pfadfinder/assets/.*\.(js|css|woff2?|png|jpe?g|gif|webp|svg|ico)$#">
+	<IfModule mod_expires.c>
+		ExpiresActive On
+		ExpiresDefault "access plus 1 year"
+	</IfModule>
+</If>
+
+<IfModule mod_headers.c>
+	Header unset ETag "expr=%{REQUEST_URI} =~ m#^/openage-pfadfinder/assets/.*\.(js|css|woff2?|png|jpe?g|gif|webp|svg|ico)$#"
+	Header set Cache-Control "public, max-age=31536000, immutable" "expr=%{REQUEST_URI} =~ m#^/openage-pfadfinder/assets/.*\.(js|css|woff2?|png|jpe?g|gif|webp|svg|ico)$#"
+
+	# index.html: always revalidate (it's the deployment manifest).
+	<FilesMatch "\.html$">
+		Header unset ETag "expr=%{REQUEST_URI} !~ m#^/openage-pfadfinder/assets/#"
+		Header set Cache-Control "no-cache" "expr=%{REQUEST_URI} !~ m#^/openage-pfadfinder/assets/#"
+	</FilesMatch>
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+	Header set X-Content-Type-Options "nosniff"
+	Header set X-Frame-Options "DENY"
+	Header set Referrer-Policy "strict-origin-when-cross-origin"
+	Header set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	Header set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+</IfModule>
