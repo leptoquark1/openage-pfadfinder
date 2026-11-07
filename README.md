@@ -1,9 +1,10 @@
-<img src="https://raw.githubusercontent.com/leptoquark1/openage-pfadfinder/refs/heads/feat/demo-app/apps/demo/public/favicon.svg" alt="openage Pfadfinder logo" width="64" align="right">
+<img src="https://raw.githubusercontent.com/leptoquark1/openage-pfadfinder/278f9cd77aed9e1082c31ce4869b2fe4fd913db0/apps/demo/public/favicon.svg" alt="openage Pfadfinder logo" width="64" align="right">
 
 # openage Pfadfinder
 
 [![npm](https://img.shields.io/npm/v/@leptoquark1/openage-pfadfinder)](https://www.npmjs.com/package/@leptoquark1/openage-pfadfinder)
 [![GitHub license](https://img.shields.io/github/license/leptoquark1/openage-pfadfinder)](https://github.com/leptoquark1/@leptoquark1/openage-pfadfinder)
+[![npm](https://img.shields.io/badge/Interactive-Demo-blue?logo=htmx)](https://leptoquark1.github.io/openage-pfadfinder/)
 
 > TypeScript port of the Pathfinding Subsystem
 
@@ -11,7 +12,9 @@ A dependency-free, native ESM TypeScript library implementing two-stage hierarch
 pathfinding — a port of the [openage](https://github.com/SFTtech/openage) pathfinding system based on
 _Crowd Pathfinding and Steering Using Flow Field Tiles_ by Elijah Emerson.
 
-Learn more about the underlying Pathfinding [here](https://github.com/SFTtech/openage/tree/master/doc/code/pathfinding)
+<small>Learn more about the underlying Pathfinding [here](https://github.com/SFTtech/openage/tree/master/doc/code/pathfinding)</small>
+
+### [→ Try the Interactive Live Demo](https://leptoquark1.github.io/openage-pfadfinder/)
 
 ## Installation
 
