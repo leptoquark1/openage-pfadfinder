@@ -95,4 +95,36 @@ describe('Grid.rebuildPortals incremental update', () => {
     expect(ids.size).toBe(2);
     expect(grid.getPortalMap().size).toBe(2);
   });
+
+  it('never hands out a portal id twice when a surviving portal precedes a new one', () => {
+    const size = 8;
+    const grid = new Grid(0, { width: 3, height: 1 }, size);
+    const sectors = [0, 1, 2].map(i => new Sector(i, { x: i, y: 0 }, fullCostField(size)));
+    for (const sector of sectors) {
+      grid.addSector(sector);
+    }
+    const [sector0, sector1] = sectors as [Sector, Sector, Sector];
+
+    // Border 0|1 starts with two portals: rows 0..4 and 6..7.
+    sector0.getCostField().setCost(size - 1, 5, COST_IMPASSABLE);
+    grid.initPortals();
+    grid.initPortalNodes();
+
+    // Row 6 closes: rows 0..4 survive, rows 7..7 become a new portal that
+    // findPortals numbered after the survivor.
+    sector0.getCostField().setCost(size - 1, 6, COST_IMPASSABLE);
+    grid.rebuildPortals([sector0]);
+    grid.rebuildPortalNodes();
+
+    // Another border splits and gets fresh ids.
+    sector1.getCostField().setCost(size - 1, 3, COST_IMPASSABLE);
+    grid.rebuildPortals([sector1]);
+    grid.rebuildPortalNodes();
+
+    const portals = new Set(sectors.flatMap(s => s.getPortals()));
+    const ids = new Set([...portals].map(p => p.getId()));
+    expect(portals.size).toBe(4);
+    expect(ids.size).toBe(portals.size);
+    expect(grid.getPortalMap().size).toBe(portals.size);
+  });
 });
