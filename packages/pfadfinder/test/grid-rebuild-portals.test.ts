@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CostField, Grid, Sector } from '../src/index.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
+import { freshPortalGraphOf, portalGraphOf } from './helpers.js';
 
 function fullCostField(size: number): CostField {
   const field = new CostField(size);
@@ -155,5 +156,49 @@ describe('Grid.rebuildPortals incremental update', () => {
     grid.rebuildPortals([sector0]);
     grid.rebuildPortalNodes();
     expect(sector0.getPortals().map(p => p.getId()).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+  });
+
+  it('syncs only the nodes of the sectors it is given', () => {
+    const size = 8;
+    const grid = new Grid(0, { width: 4, height: 1 }, size);
+    const sectors = [0, 1, 2, 3].map(i => new Sector(i, { x: i, y: 0 }, fullCostField(size)));
+    for (const sector of sectors) {
+      grid.addSector(sector);
+    }
+    const [sector0, sector1, , sector3] = sectors as [Sector, Sector, Sector, Sector];
+    grid.initPortals();
+    grid.initPortalNodes();
+    const border01 = sector0.getPortals()[0]!.getId();
+    const far = grid.getPortalMap().get(sector3.getPortals()[0]!.getId())!;
+    const farExits = far.exits.get(2);
+
+    // A wall on border 0|1 drops its portal; sectors 0 and 1 changed.
+    for (let y = 0; y < size; y++) {
+      sector0.getCostField().setCost(size - 1, y, COST_IMPASSABLE);
+    }
+    const changed = grid.rebuildPortals([sector0]);
+    grid.rebuildPortalNodes(changed);
+
+    expect(changed).toEqual(new Set([0, 1]));
+    expect(grid.getPortalMap().has(border01)).toBe(false);
+    // Border 1|2 lost its exit to the dropped portal.
+    const border12 = grid.getPortalMap().get(sector1.getPortals()[0]!.getId())!;
+    expect([...border12.exits.get(1)!.keys()]).toEqual([]);
+    // Border 2|3 lies outside the changed sectors and was left alone.
+    expect(grid.getPortalMap().get(far.portal.getId())).toBe(far);
+    expect(far.exits.get(2)).toBe(farExits);
+    expect(portalGraphOf(grid.getPortalMap())).toEqual(freshPortalGraphOf(grid));
+
+    // Undo: the portal comes back with a node of its own.
+    for (let y = 0; y < size; y++) {
+      sector0.getCostField().setCost(size - 1, y, COST_MIN);
+    }
+    grid.rebuildPortalNodes(grid.rebuildPortals([sector0]));
+    expect(grid.getPortalMap().size).toBe(3);
+    expect(portalGraphOf(grid.getPortalMap())).toEqual(freshPortalGraphOf(grid));
+
+    // Nothing changed, nothing to do.
+    grid.rebuildPortalNodes(new Set());
+    expect(far.exits.get(2)).toBe(farExits);
   });
 });
