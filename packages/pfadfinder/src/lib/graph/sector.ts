@@ -33,12 +33,40 @@ export class Sector {
     return this.costField;
   }
 
+  /**
+   * The sector's portals in edge order: top, left, bottom, right edge, and
+   * along each edge by position. `addPortal()` keeps that order, so the list
+   * depends only on which portals exist, not on when each was added. A grid
+   * updated step by step therefore lists them exactly like one built from
+   * scratch, and A*, which visits portals in list order, plans the same routes
+   * on both.
+   */
   getPortals(): Portal[] {
     return this.portals;
   }
 
+  /** Add a portal at its place in edge order (see `getPortals()`). */
   addPortal(portal: Portal): void {
-    this.portals.push(portal);
+    const rank = this.edgeRank(portal);
+    let at = this.portals.length;
+    while (at > 0 && this.edgeRank(this.portals[at - 1]!) > rank) {
+      at--;
+    }
+    this.portals.splice(at, 0, portal);
+  }
+
+  /**
+   * Sort key of a portal of this sector: its edge (top, left, bottom, right),
+   * then where it starts along that edge. This is the order `Grid.initPortals()`
+   * adds portals in.
+   */
+  private edgeRank(portal: Portal): number {
+    const northSouth = portal.getDirection() === PortalDirection.NORTH_SOUTH;
+    // sector0 is the northern/western side, so its portal lies on the bottom/right edge
+    const first = portal.getSector0() === this.id;
+    const edge = northSouth ? (first ? 2 : 0) : first ? 3 : 1;
+    const start = portal.getEntryStart(this.id);
+    return edge * this.costField.getSize() + (northSouth ? start.ne : start.se);
   }
 
   /**

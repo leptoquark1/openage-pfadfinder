@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CostField, Grid, Sector } from '../src/index.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
-import { freshPortalGraphOf, portalGraphOf } from './helpers.js';
+import { buildGrid } from '../src/shared/cost-map/cost-map.js';
+import { freshPortalGraphOf, portalGraphOf, portalLayoutOf } from './helpers.js';
 
 function fullCostField(size: number): CostField {
   const field = new CostField(size);
@@ -205,5 +206,27 @@ describe('Grid.rebuildPortals incremental update', () => {
     // Nothing changed, nothing to do.
     grid.rebuildPortalNodes(new Set());
     expect(far.exits.get(2)).toBe(farExits);
+  });
+
+  it('lists the portals of a sector in the order of a full build after a portal was split', () => {
+    const size = 8;
+    const cells = size * 2;
+    const costs = new Uint8Array(cells * cells).fill(COST_MIN);
+    const grid = buildGrid(costs.slice(), { width: cells, height: cells }, size);
+
+    // Bottom border of sector 0: its portal to sector 2 splits in two, and
+    // both halves are new portals.
+    const wall = { ne: 3, se: size - 1 };
+    costs[wall.ne + wall.se * cells] = COST_IMPASSABLE;
+    grid.updateCosts([{ ...wall, cost: COST_IMPASSABLE }]);
+
+    const fresh = buildGrid(costs, { width: cells, height: cells }, size);
+    expect(portalLayoutOf(grid)).toEqual(portalLayoutOf(fresh));
+    // bottom edge before right edge, along the edge by position
+    expect(portalLayoutOf(grid)[0]![1].map(([portal]) => portal)).toEqual([
+      '0>2 0,7..2,7',
+      '0>2 4,7..7,7',
+      '0>1 7,0..7,7',
+    ]);
   });
 });

@@ -1,4 +1,5 @@
 import type { Grid } from '../src/lib/graph/grid.js';
+import type { Portal } from '../src/lib/graph/portal.js';
 import type { FlowRoute } from '../src/lib/pathfinding/flow-route.js';
 import { PortalNode } from '../src/lib/pathfinding/portal-graph.js';
 import type { PortalId, SectorId, Waypoint } from '../src/shared/types.js';
@@ -50,4 +51,24 @@ export function freshPortalGraphOf(grid: Grid): ReturnType<typeof portalGraphOf>
     node.initExits(nodes);
   }
   return portalGraphOf(nodes);
+}
+
+/**
+ * Every sector's portals in list order, each with its exits in order, named
+ * by the sectors and cells they span instead of by id. Two grids with the
+ * same layout hand A* the same portals in the same order, so they plan the
+ * same routes.
+ */
+export function portalLayoutOf(grid: Grid): [SectorId, [string, string[]][]][] {
+  const name = (portal: Portal): string => {
+    const start = portal.getEntryStart(portal.getSector0());
+    const end = portal.getEntryEnd(portal.getSector0());
+    return `${portal.getSector0()}>${portal.getSector1()} ${start.ne},${start.se}..${end.ne},${end.se}`;
+  };
+  return grid
+    .getSectors()
+    .map(sector => [
+      sector.getId(),
+      sector.getPortals().map(portal => [name(portal), portal.getConnected(sector.getId()).map(name)]),
+    ]);
 }

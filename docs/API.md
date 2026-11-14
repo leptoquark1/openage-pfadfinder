@@ -149,8 +149,8 @@ new Grid(id, size: Size2s, sectors: Sector[]);    // grid pre-filled with sector
 ```typescript
 new Sector(id: SectorId, position: Vector2s, costField: CostField);
 getId(), getPosition(), getCostField();          // id, grid position { x, y }, the sector's field
-getPortals(): Portal[];                          // portals on this sector's edges (sorted by edge)
-addPortal(portal), removePortal(portal): boolean
+getPortals(): Portal[];                          // portals in edge order: top, left, bottom, right; along an edge by position
+addPortal(portal), removePortal(portal): boolean // addPortal() inserts at the portal's place in edge order
 findPortals(                                     // portals on the shared edge with a neighbor
   other: Sector,
   direction: PortalDirection,
@@ -192,6 +192,10 @@ When you need which parameter:
 | Recompute an edge after a cost change and keep unchanged portals (identity, exits, cached fields) | allocator | old portals of that edge |
 
 `Grid.initPortals()` and `Grid.rebuildPortals()` use one shared allocator for this, so code that builds grids through `Grid` needs no changes.
+
+#### Portal order
+
+A sector lists its portals in edge order whatever the order they were added in, and `connectExits()` lists exits the same way. A* visits portals in list order and breaks ties by it, so a grid changed step by step (`updateCosts()`, `rebuildPortals()`) plans exactly the routes a grid built from scratch from the same costs does. Portal ids still differ between the two; nothing orders by id.
 
 **Migrating:** existing calls with a number keep working unchanged. Code that called `findPortals` with a number and then counted ids itself (`nextId += found.length` or `nextId++` per portal) should pass an allocator and drop the counting. Code that matched the result against old portals with `matches()` and threw the fresh copies away should pass the old portals as `reuse` and use the result directly:
 
