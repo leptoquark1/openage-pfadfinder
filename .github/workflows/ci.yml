@@ -16,6 +16,8 @@ jobs:
   verify:
     name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
+    outputs:
+      release_changed: ${{ steps.changed.outputs.release_changed }}
     strategy:
       fail-fast: false
       matrix:
@@ -153,3 +155,32 @@ jobs:
       - name: Validate package
         if: steps.changed.outputs.verify == 'true'
         run: pnpm check:package
+
+  benchmark:
+    name: Benchmark vs. latest release
+    needs: verify
+    # Only package changes can change the performance of the published library.
+    if: needs.verify.outputs.release_changed == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Builds this PR, fetches the latest release from npm and measures both on
+      # this runner. Exit code 1: the release is faster beyond the 5 % noise
+      # margin. The Markdown matrix goes to the job summary.
+      - name: Compare with the latest release
+        run: pnpm --reporter=silent benchmark latest >> "$GITHUB_STEP_SUMMARY"
