@@ -14,3 +14,9 @@ coverage/
 # Copied from the repo root by the library's prepack script
 /packages/pfadfinder/README.md
 /packages/pfadfinder/LICENSE
+
+# gemini-cli settings
+.gemini/
+
+# GitHub App credentials
+gha-creds-*.json
