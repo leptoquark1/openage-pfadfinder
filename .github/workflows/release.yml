@@ -34,13 +34,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Determine next version
+        id: next
+        run: |
+          pnpm exec changeset status --output=changeset-status.json
+          release=$(node -p "const r = require('./changeset-status.json').releases.find(r => r.name === '@leptoquark1/openage-pfadfinder'); r ? r.type + ' version ' + r.newVersion : ''")
+          rm changeset-status.json
+          echo "release=${release}" >> "$GITHUB_OUTPUT"
+
       - name: Create release pull request or publish
         uses: changesets/action@v2
         with:
           version-script: pnpm run version
           publish-script: pnpm run release
-          commit-message: "chore: release"
-          pr-title: "chore: release"
+          commit-message: "chore(release): ${{ steps.next.outputs.release }}"
+          pr-title: "chore(release): ${{ steps.next.outputs.release }}"
           create-github-releases: true
           push-git-tags: true
         env:
