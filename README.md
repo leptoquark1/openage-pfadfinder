@@ -128,7 +128,7 @@ packages/pfadfinder/                  Published library (@leptoquark1/openage-pf
   src/shared/                         Constants, bit ops, coordinates, cost-map helpers, types
   test/                               Vitest test suite
 apps/demo/                            Interactive playground (React + Vite, deployed to GitHub Pages)
-docs/                                 API reference and release documentation
+docs/                                 API reference, release and benchmark documentation
 .github/workflows/                    CI and release automation
 .changeset/                           Changesets configuration
 ```
@@ -143,6 +143,10 @@ pnpm typecheck
 pnpm test
 pnpm test:coverage
 pnpm test:perf   # timing-sensitive demo benchmarks (excluded from `pnpm test`)
+pnpm benchmark   # updateCosts single vs. batched, Markdown table (`--json` for JSON, `--pretty` for a terminal table)
+pnpm benchmark latest         # compare the latest release ("Then") with this build ("Now")
+pnpm benchmark <other-build>  # compare another build ("Then") with this one ("Now")
+pnpm benchmark --docs         # also write the results to docs/BENCHMARK.md
 pnpm check:package
 ```
 
