@@ -254,7 +254,7 @@ Accumulated cost from the target, per cell: `Uint16Array` costs + `Uint8Array` f
 | `reset()` / `clone()` | Clear to initial state / deep copy (used by the cache's copy-on-read semantics). |
 | `resetDynamicFlags()` | Clear LOS/wavefront flags but keep costs — cached fields are stored in this state and re-run on reuse. |
 | `integrateLos(costField, target): number[]` | Phase 1: wavefront + Bresenham shadowcasting; marks reachable cells with the LOS flag and returns the blocked wavefront for cost integration. |
-| `integrateLosPortal(costField, other, otherSectorId, portal, target)` | Same, but the wavefront also crosses into the neighboring sector's integration field through the portal (route continues past this sector). |
+| `integrateLosPortal(costField, other, otherSectorId, portal, target)` | Same for a sector entered through a portal: the LOS/wavefront flags of the portal cells are taken over from the neighboring sector's integration field (`other`), and the wave starts from the portal cells that see the target. `target` is in this sector's local frame and may lie outside it. On its own it only reaches cells in sight of the target, so run it on a field `integrateCostPortal()` has filled, as `Integrator.integratePortal()` does. |
 | `integrateCost(costField, target)` | Phase 2 without LOS: Dijkstra-like 4-connected cost accumulation from the target. |
 | `integrateCostPortal(costField, otherSectorId, portal)` | Same with the portal boundary seeded from the neighbor's costs. |
 | `integrateCostFromWavefront(costField, startCells)` | Phase 2 continuing from an existing (LOS) wavefront — avoids re-scanning blocked cells. |
@@ -288,7 +288,7 @@ interface IntegrationFlowPair {
 class Integrator {
   getCachedFieldCount(): number;
   integrate(costField, target: TileDelta, withLos = true): IntegrationField;      // no cache
-  integratePortal(costField, other, otherSectorId, portal, target, withLos = true); // no cache
+  integratePortal(costField, other, otherSectorId, portal, target, withLos = true); // no cache; costs from the whole portal, LOS marks on top
   build(integrationField): FlowField;                                             // no cache
   buildPortal(integrationField, other, otherSectorId, portal, _withLos = true);   // no cache
   get(costField, target: TileDelta, withLos = true): IntegrationFlowPair;         // integration + flow, no cache
@@ -296,7 +296,9 @@ class Integrator {
 }
 ```
 
-`getPortal()` is the cached variant used by the pathfinder. Every cost field gets its own cache, held weakly, so grids never share entries and a replaced grid's cache is released with it. Within a cost field, entries are keyed by the portal's cell range and the sector it is entered from, not by the portal id. Once a cost field has been modified, its whole cache is cleared. Hits are **copy-on-read** — returned fields are clones with dynamic flags reset, so callers may re-run LOS/mutation freely.
+`getPortal()` is the cached variant used by the pathfinder. Every cost field gets its own cache, held weakly, so grids never share entries and a replaced grid's cache is released with it. Within a cost field, entries are keyed by the portal's cell range and the sector it is entered from, not by the portal id. Once a cost field has been modified, its whole cache is cleared.
+
+The cached fields hold costs and directions only, integrated from the whole portal without line of sight: that part depends on nothing but the cost field and the portal's cells. Line of sight also depends on `target` and `other`, so `withLos` adds its marks to the returned fields, never to the cached ones. One entry therefore serves requests with and without LOS, and a request gets the same fields whether or not they were cached. Returned fields are always clones (**copy-on-read**), so callers may mutate them freely.
 
 ## Field cache
 

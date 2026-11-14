@@ -16,9 +16,14 @@ export interface IntegrationFlowPair {
  * Integrates cost fields and builds flow fields, with caching
  * for reuse across multiple path requests.
  *
- * Copy-on-read: on cache hit, the cached fields are cloned before
- * any re-integration (LOS re-run, flag transfer) so the cache stays
- * pristine for future lookups.
+ * Portal fields are cached without line of sight: the costs from a portal
+ * depend only on the cost field and the portal's cells, while line of sight
+ * also depends on the target and the field behind the portal. A request
+ * with LOS gets the marks added to its own copy.
+ *
+ * Copy-on-read: the cached fields are cloned before they are handed out
+ * (and before the LOS pass or flag transfer), so the cache stays pristine
+ * for future lookups.
  *
  * Cache scope: every cost field gets its own cache, held weakly, so fields
  * of different grids never share entries and the cache of a replaced grid
@@ -82,6 +87,11 @@ export class Integrator {
 
   /**
    * Integrate cost field from a portal boundary.
+   *
+   * The costs always come from the whole portal. `withLos` adds the
+   * line-of-sight marks on top: the LOS pass alone only starts from portal
+   * cells that see the target and would leave every other cell without a
+   * cost.
    */
   integratePortal(
     costField: CostField,
@@ -93,11 +103,9 @@ export class Integrator {
   ): IntegrationField {
     const integrationField = new IntegrationField(costField.getSize());
 
+    integrationField.integrateCostPortal(costField, otherSectorId, portal);
     if (withLos) {
-      const wavefrontBlocked = integrationField.integrateLosPortal(costField, other, otherSectorId, portal, target);
-      integrationField.integrateCostFromWavefront(costField, wavefrontBlocked);
-    } else {
-      integrationField.integrateCostPortal(costField, otherSectorId, portal);
+      integrationField.integrateLosPortal(costField, other, otherSectorId, portal, target);
     }
 
     return integrationField;
@@ -138,7 +146,9 @@ export class Integrator {
 
   /**
    * Get integration + flow field for a portal entry, with cache lookup.
-   * Uses copy-on-read: cached fields are cloned before any mutation.
+   * The cached fields hold no line of sight, so one entry serves requests
+   * with and without it, whatever their target.
+   * Uses copy-on-read: cached fields are cloned before they are handed out.
    * Uses dirty tracking: the cache of a modified cost field is cleared.
    */
   getPortal(
@@ -152,36 +162,25 @@ export class Integrator {
     const cache = this.cacheFor(costField);
     const key = portalRangeKey(portal, otherSectorId);
 
-    const entry = cache.get(key);
-    if (entry) {
-      // Copy-on-read: clone the cached fields before mutating
-      const integrationCopy = entry.integrationField.clone();
-      const flowCopy = entry.flowField.clone();
-
-      integrationCopy.resetDynamicFlags();
-      flowCopy.resetDynamicFlags();
-
-      if (withLos) {
-        integrationCopy.integrateLosPortal(costField, other, otherSectorId, portal, target);
-        flowCopy.transferDynamicFlags(integrationCopy);
-      }
-
-      return { integrationField: integrationCopy, flowField: flowCopy };
+    let entry = cache.get(key);
+    if (!entry) {
+      const cachedIntegration = this.integratePortal(costField, other, otherSectorId, portal, target, false);
+      entry = {
+        integrationField: cachedIntegration,
+        flowField: this.buildPortal(cachedIntegration, other, otherSectorId, portal, false),
+        costFieldVersion: costField.getVersion(),
+      };
+      cache.add(key, entry);
     }
 
-    const integrationField = this.integratePortal(costField, other, otherSectorId, portal, target, withLos);
-    const flowField = this.buildPortal(integrationField, other, otherSectorId, portal, withLos);
+    // Copy-on-read: the caller's fields, free to take the LOS marks
+    const integrationField = entry.integrationField.clone();
+    const flowField = entry.flowField.clone();
 
-    // Cache the result (clone first, then clear dynamic flags on the clone)
-    const cachedIntegration = integrationField.clone();
-    const cachedFlow = flowField.clone();
-    cachedIntegration.resetDynamicFlags();
-    cachedFlow.resetDynamicFlags();
-    cache.add(key, {
-      integrationField: cachedIntegration,
-      flowField: cachedFlow,
-      costFieldVersion: costField.getVersion(),
-    });
+    if (withLos) {
+      integrationField.integrateLosPortal(costField, other, otherSectorId, portal, target);
+      flowField.transferDynamicFlags(integrationField);
+    }
 
     return { integrationField, flowField };
   }

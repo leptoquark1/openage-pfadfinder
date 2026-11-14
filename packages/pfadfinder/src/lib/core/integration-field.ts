@@ -126,6 +126,10 @@ export class IntegrationField {
   /**
    * LOS integration from a portal boundary.
    * Transfers LOS/wavefront flags from the other sector's integration field.
+   *
+   * The wave only starts from portal cells that see the target, so on its
+   * own this leaves every cell out of sight without a cost. Integrate the
+   * costs first (`integrateCostPortal()`); this pass then adds the marks.
    */
   integrateLosPortal(
     costField: CostField,
