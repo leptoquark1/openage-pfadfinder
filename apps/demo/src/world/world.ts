@@ -1,10 +1,5 @@
 import type { Portal } from '@leptoquark1/openage-pfadfinder';
-import {
-  BinaryHeap,
-  Grid,
-  Integrator,
-  Sector,
-} from '@leptoquark1/openage-pfadfinder';
+import { BinaryHeap, type Grid, Integrator, type Sector } from '@leptoquark1/openage-pfadfinder';
 import type { PortalId, SectorId, TileDelta, Waypoint } from '@leptoquark1/openage-pfadfinder/shared';
 import {
   buildGrid,
@@ -38,69 +33,69 @@ const FLOW_DELTAS: Record<number, readonly [number, number]> = {
 
 /** A unit steered by the flow fields towards the target. */
 export interface Mob {
-  x: number
-  y: number
+  x: number;
+  y: number;
   /** Spawn position — a mob returns here after reaching the target. */
-  readonly spawnX: number
-  readonly spawnY: number
+  readonly spawnX: number;
+  readonly spawnY: number;
   /** Individual travel speed in px/s, drawn at spawn time. */
-  readonly speed: number
+  readonly speed: number;
   /** Cells the mob will pass through, traced along the flow fields. */
-  trace: Waypoint[]
+  trace: Waypoint[];
   /** World version the trace was built against; -1 forces a refresh. */
-  traceVersion: number
+  traceVersion: number;
   /** True when the flow fields offer no route to the target. */
-  blocked: boolean
+  blocked: boolean;
 }
 
 /** Endpoints of a patrol route, in canvas pixels. */
 export interface PatrolRoute {
-  ax: number
-  ay: number
-  bx: number
-  by: number
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
 }
 
 /** A free-floating obstacle that bounces around and re-stamps the cost field. */
 export interface MovingObstacle {
-  x: number
-  y: number
-  angle: number
-  readonly speed: number
-  readonly size: number
+  x: number;
+  y: number;
+  angle: number;
+  readonly speed: number;
+  readonly size: number;
   /** Route the obstacle pendles between; null for free-floating ones. */
-  readonly patrol: PatrolRoute | null
+  readonly patrol: PatrolRoute | null;
   /** True while the obstacle heads for endpoint B, false back towards A. */
-  headingToB: boolean
+  headingToB: boolean;
 }
 
 /** The flow fields of one sector, merged across its walkable components. */
 export interface SectorFlow {
   /** Raw `FlowField` cells, local to the sector. */
-  readonly cells: Uint8Array
+  readonly cells: Uint8Array;
   /**
-     * Portal crossings at the sinks of the fields, by local cell index. A field
-     * converges on its sink; leaving the sector is a step no direction inside
-     * the field encodes.
-     */
-  readonly exits: Map<number, readonly [number, number]>
+   * Portal crossings at the sinks of the fields, by local cell index. A field
+   * converges on its sink; leaving the sector is a step no direction inside
+   * the field encodes.
+   */
+  readonly exits: Map<number, readonly [number, number]>;
   /**
-     * Integration sink per component (component id → local cell index, -1 when
-     * no route to the target exists). Two flows with equal sinks are equal, so
-     * this is what makes a cached field reusable.
-     */
-  readonly sinks: ReadonlyMap<number, number>
+   * Integration sink per component (component id → local cell index, -1 when
+   * no route to the target exists). Two flows with equal sinks are equal, so
+   * this is what makes a cached field reusable.
+   */
+  readonly sinks: ReadonlyMap<number, number>;
   /** `CostField` version of the sector the cells were integrated against. */
-  readonly costVersion: number
+  readonly costVersion: number;
   /** Components version of the sector the cells were integrated against. */
-  readonly componentsVersion: number
+  readonly componentsVersion: number;
 }
 
 export interface WorldStats {
-  readonly mobs: number
-  readonly obstacles: number
-  readonly blocked: number
-  readonly hasTarget: boolean
+  readonly mobs: number;
+  readonly obstacles: number;
+  readonly blocked: number;
+  readonly hasTarget: boolean;
 }
 
 /** Milliseconds between planning ticks — grid rebuild plus flow-field refresh. */
@@ -162,10 +157,10 @@ export class World {
   /** Impassable cells in `staticCost`, kept in step with every write to it. */
   private wallCount = 0;
   /**
-     * Wall layer right after the active labyrinth was generated, so
-     * `removeLabyrinth()` can tell its walls from later edits. null while no
-     * labyrinth is active.
-     */
+   * Wall layer right after the active labyrinth was generated, so
+   * `removeLabyrinth()` can tell its walls from later edits. null while no
+   * labyrinth is active.
+   */
   private labyrinth: Uint8Array | null = null;
   /** Static walls plus moving obstacles, the layer sectors are built from. */
   private dynamicCost = new Uint8Array(0);
@@ -178,7 +173,7 @@ export class World {
   private readonly obstacles: MovingObstacle[] = [];
 
   /** First endpoint of the patrol route being placed — pending until the second click. */
-  private patrolAnchor: { x: number, y: number } | null = null;
+  private patrolAnchor: { x: number; y: number } | null = null;
 
   /** Bumped whenever anything invalidates the flow fields. */
   private version = 0;
@@ -265,9 +260,9 @@ export class World {
   }
 
   /**
-     * Fit the world to a viewport measured in cells. The grid is rounded up to
-     * whole sectors, so it may extend slightly past the visible area.
-     */
+   * Fit the world to a viewport measured in cells. The grid is rounded up to
+   * whole sectors, so it may extend slightly past the visible area.
+   */
   resize(viewCols: number, viewRows: number): void {
     const sectorsX = Math.max(1, Math.ceil(viewCols / SECTOR_SIZE));
     const sectorsY = Math.max(1, Math.ceil(viewRows / SECTOR_SIZE));
@@ -341,24 +336,24 @@ export class World {
   }
 
   /**
-     * Overwrite the wall layer with a randomly generated labyrinth: a
-     * randomized depth-first backtracker over the odd-cell lattice, then
-     * loosened up — some passages widen to two lanes, dead ends braid into
-     * loops, and a few small open rooms are carved. Corridor widths vary
-     * between one and two cells, walls between one and a few cells.
-     *
-     * The loosening passes only ever carve, never stamp, so the walkable
-     * cells stay fully connected: everything the DFS reached stays
-     * reachable, and every carve joins onto it.
-     *
-     * Every existing obstacle — painted walls, moving and patrolling
-     * obstacles, a half-placed patrol route — is removed first; the UI asks
-     * for confirmation before calling this. The target and mobs stay: the
-     * target cell, every cell a mob's body overlaps and every mob's spawn
-     * cell are kept free together with their four neighbours, and each gets
-     * a passage to the nearest lattice cell, so nothing is buried and every
-     * one of them can reach every other.
-     */
+   * Overwrite the wall layer with a randomly generated labyrinth: a
+   * randomized depth-first backtracker over the odd-cell lattice, then
+   * loosened up — some passages widen to two lanes, dead ends braid into
+   * loops, and a few small open rooms are carved. Corridor widths vary
+   * between one and two cells, walls between one and a few cells.
+   *
+   * The loosening passes only ever carve, never stamp, so the walkable
+   * cells stay fully connected: everything the DFS reached stays
+   * reachable, and every carve joins onto it.
+   *
+   * Every existing obstacle — painted walls, moving and patrolling
+   * obstacles, a half-placed patrol route — is removed first; the UI asks
+   * for confirmation before calling this. The target and mobs stay: the
+   * target cell, every cell a mob's body overlaps and every mob's spawn
+   * cell are kept free together with their four neighbours, and each gets
+   * a passage to the nearest lattice cell, so nothing is buried and every
+   * one of them can reach every other.
+   */
   generateLabyrinth(): void {
     if (this.cols === 0 || this.rows === 0) {
       return;
@@ -581,11 +576,11 @@ export class World {
   }
 
   /**
-     * Undo the active labyrinth: every cell it walled that is still a wall
-     * turns free. Walls painted or scattered since onto cells the labyrinth
-     * left free stay. The obstacles removed by `generateLabyrinth()` do not
-     * come back.
-     */
+   * Undo the active labyrinth: every cell it walled that is still a wall
+   * turns free. Walls painted or scattered since onto cells the labyrinth
+   * left free stay. The obstacles removed by `generateLabyrinth()` do not
+   * come back.
+   */
   removeLabyrinth(): void {
     const labyrinth = this.labyrinth;
     if (!labyrinth) {
@@ -604,19 +599,19 @@ export class World {
   }
 
   /**
-     * Scatter random wall segments and corridors around the target: no
-     * closed maze, just loose obstacles. Everything within `SCATTER_RADIUS`
-     * cells of the target is rewritten — walls cleared first, then short
-     * straight segments stamped until roughly `SCATTER_WALL_DENSITY` of the
-     * area is wall.
-     *
-     * The target, mobs and moving obstacles keep their cells plus the four
-     * neighbours free (no object buried, every pocket open), and a straight
-     * corridor is carved from the target to every mob inside the area — so a
-     * route to the target always exists, whatever the dice rolled.
-     *
-     * Returns false when there is no target yet or the world is empty.
-     */
+   * Scatter random wall segments and corridors around the target: no
+   * closed maze, just loose obstacles. Everything within `SCATTER_RADIUS`
+   * cells of the target is rewritten — walls cleared first, then short
+   * straight segments stamped until roughly `SCATTER_WALL_DENSITY` of the
+   * area is wall.
+   *
+   * The target, mobs and moving obstacles keep their cells plus the four
+   * neighbours free (no object buried, every pocket open), and a straight
+   * corridor is carved from the target to every mob inside the area — so a
+   * route to the target always exists, whatever the dice rolled.
+   *
+   * Returns false when there is no target yet or the world is empty.
+   */
   scatterWallsAroundTarget(): boolean {
     const target = this.target;
     if (!target || this.cols === 0 || this.rows === 0) {
@@ -744,9 +739,9 @@ export class World {
   }
 
   /**
-     * Recount the wall cells after a bulk rewrite of the wall layer (resize,
-     * labyrinth, scatter). Single-cell edits adjust `wallCount` directly.
-     */
+   * Recount the wall cells after a bulk rewrite of the wall layer (resize,
+   * labyrinth, scatter). Single-cell edits adjust `wallCount` directly.
+   */
   private recountWalls(): void {
     let walls = 0;
     for (let i = 0; i < this.staticCost.length; i++) {
@@ -830,14 +825,14 @@ export class World {
   }
 
   /** First endpoint of the patrol route being placed, null once complete or cancelled. */
-  getPatrolAnchor(): { x: number, y: number } | null {
+  getPatrolAnchor(): { x: number; y: number } | null {
     return this.patrolAnchor;
   }
 
   /**
-     * First click of the patrol placement: anchors endpoint A. The second
-     * click (`addPatrolObstacle`) sets endpoint B and spawns the obstacle.
-     */
+   * First click of the patrol placement: anchors endpoint A. The second
+   * click (`addPatrolObstacle`) sets endpoint B and spawns the obstacle.
+   */
   beginPatrolObstacle(px: number, py: number): void {
     if (!this.canPlacePatrolObstacle(px, py)) {
       return;
@@ -846,10 +841,10 @@ export class World {
   }
 
   /**
-     * Second click of the patrol placement: sets endpoint B and spawns an
-     * obstacle pendling between A and B. Without an anchor it begins the
-     * route instead. Returns true when the obstacle was spawned.
-     */
+   * Second click of the patrol placement: sets endpoint B and spawns an
+   * obstacle pendling between A and B. Without an anchor it begins the
+   * route instead. Returns true when the obstacle was spawned.
+   */
   addPatrolObstacle(px: number, py: number): boolean {
     const anchor = this.patrolAnchor;
     if (!anchor) {
@@ -880,11 +875,11 @@ export class World {
   }
 
   /**
-     * True when a patrol endpoint can sit at the pixel position: the click
-     * must be inside the world and the endpoint's obstacle-sized box must not
-     * cover the target or another obstacle. Walls are allowed — the patrol
-     * slides along them like a free-floating obstacle.
-     */
+   * True when a patrol endpoint can sit at the pixel position: the click
+   * must be inside the world and the endpoint's obstacle-sized box must not
+   * cover the target or another obstacle. Walls are allowed — the patrol
+   * slides along them like a free-floating obstacle.
+   */
   canPlacePatrolObstacle(px: number, py: number): boolean {
     if (!this.cellAt(px, py)) {
       return false;
@@ -929,9 +924,9 @@ export class World {
   // --- Placement previews: the predicates behind the canvas cursor overlay. ---
 
   /**
-     * True when the cell is taken: wall, moving obstacle, target or mob —
-     * nothing can be placed on top of another object.
-     */
+   * True when the cell is taken: wall, moving obstacle, target or mob —
+   * nothing can be placed on top of another object.
+   */
   private cellOccupied(ne: number, se: number): boolean {
     if (this.cellBlocked(ne, se)) {
       return true;
@@ -950,11 +945,11 @@ export class World {
   }
 
   /**
-     * True when a cell is impassable to mobs: outside the world, a painted wall
-     * or a cell currently covered by a moving obstacle. Checked against live
-     * positions, not the cost layer — that is only re-stamped on the planning
-     * tick, and steering must react between ticks.
-     */
+   * True when a cell is impassable to mobs: outside the world, a painted wall
+   * or a cell currently covered by a moving obstacle. Checked against live
+   * positions, not the cost layer — that is only re-stamped on the planning
+   * tick, and steering must react between ticks.
+   */
   private cellBlocked(ne: number, se: number): boolean {
     if (ne < 0 || se < 0 || ne >= this.cols || se >= this.rows) {
       return true;
@@ -965,10 +960,10 @@ export class World {
     for (const o of this.obstacles) {
       const half = o.size / 2;
       if (
-        ne >= Math.floor((o.x - half) / CELL_SIZE)
-        && ne <= Math.floor((o.x + half) / CELL_SIZE)
-        && se >= Math.floor((o.y - half) / CELL_SIZE)
-        && se <= Math.floor((o.y + half) / CELL_SIZE)
+        ne >= Math.floor((o.x - half) / CELL_SIZE) &&
+        ne <= Math.floor((o.x + half) / CELL_SIZE) &&
+        se >= Math.floor((o.y - half) / CELL_SIZE) &&
+        se <= Math.floor((o.y + half) / CELL_SIZE)
       ) {
         return true;
       }
@@ -1004,9 +999,9 @@ export class World {
   }
 
   /**
-     * True when a moving obstacle can be added at the pixel position: every
-     * cell its box covers must be free.
-     */
+   * True when a moving obstacle can be added at the pixel position: every
+   * cell its box covers must be free.
+   */
   canPlaceMovingObstacle(px: number, py: number): boolean {
     if (!this.cellAt(px, py)) {
       return false;
@@ -1059,9 +1054,9 @@ export class World {
   }
 
   /**
-     * Advance the simulation. Movement runs every frame; grid rebuild and
-     * flow-field refresh run on the slower planning tick.
-     */
+   * Advance the simulation. Movement runs every frame; grid rebuild and
+   * flow-field refresh run on the slower planning tick.
+   */
   step(dtMs: number, nowMs: number): void {
     const dt = Math.min(dtMs, 50) / 1000;
     this.elapsedMs += dtMs;
@@ -1083,18 +1078,17 @@ export class World {
   }
 
   /**
-     * Mark a cell range as changed and invalidate the flow fields. The range
-     * is accumulated across frames and consumed by the planning tick, which
-     * rebuilds only the sectors under it.
-     */
+   * Mark a cell range as changed and invalidate the flow fields. The range
+   * is accumulated across frames and consumed by the planning tick, which
+   * rebuilds only the sectors under it.
+   */
   private markCellsDirty(minNe: number, minSe: number, maxNe: number, maxSe: number): void {
     if (this.dirtyMaxNe < this.dirtyMinNe) {
       this.dirtyMinNe = minNe;
       this.dirtyMaxNe = maxNe;
       this.dirtyMinSe = minSe;
       this.dirtyMaxSe = maxSe;
-    }
-    else {
+    } else {
       this.dirtyMinNe = Math.min(this.dirtyMinNe, minNe);
       this.dirtyMaxNe = Math.max(this.dirtyMaxNe, maxNe);
       this.dirtyMinSe = Math.min(this.dirtyMinSe, minSe);
@@ -1162,10 +1156,10 @@ export class World {
     }
     const half = OBSTACLE_SIZE / 2;
     return (
-      target.ne >= Math.floor((px - half) / CELL_SIZE)
-      && target.ne <= Math.floor((px + half) / CELL_SIZE)
-      && target.se >= Math.floor((py - half) / CELL_SIZE)
-      && target.se <= Math.floor((py + half) / CELL_SIZE)
+      target.ne >= Math.floor((px - half) / CELL_SIZE) &&
+      target.ne <= Math.floor((px + half) / CELL_SIZE) &&
+      target.se >= Math.floor((py - half) / CELL_SIZE) &&
+      target.se <= Math.floor((py + half) / CELL_SIZE)
     );
   }
 
@@ -1188,8 +1182,7 @@ export class World {
 
       if (o.patrol) {
         this.movePatrolObstacle(o, stuck, dt);
-      }
-      else {
+      } else {
         const stepX = Math.cos(o.angle) * o.speed * dt;
         const stepY = Math.sin(o.angle) * o.speed * dt;
 
@@ -1235,12 +1228,12 @@ export class World {
   }
 
   /**
-     * Move a patrolling obstacle along its route, at most to the endpoint it
-     * is heading for — the remainder of a frame's step carries into the swing
-     * back, so the speed stays constant through the turn. Walls block like
-     * they do for free-floating obstacles: the slide stops at the blocker and
-     * continues (or turns) once it is past.
-     */
+   * Move a patrolling obstacle along its route, at most to the endpoint it
+   * is heading for — the remainder of a frame's step carries into the swing
+   * back, so the speed stays constant through the turn. Walls block like
+   * they do for free-floating obstacles: the slide stops at the blocker and
+   * continues (or turns) once it is past.
+   */
   private movePatrolObstacle(o: MovingObstacle, stuck: boolean, dt: number): void {
     const route = o.patrol!;
     let remaining = o.speed * dt;
@@ -1340,9 +1333,9 @@ export class World {
   }
 
   /**
-     * Sync the grid to the current cost layer, rebuilding only the sectors under
-     * the dirty cells.
-     */
+   * Sync the grid to the current cost layer, rebuilding only the sectors under
+   * the dirty cells.
+   */
   private rebuildGrid(): void {
     if (this.cols === 0 || this.rows === 0) {
       return;
@@ -1373,7 +1366,7 @@ export class World {
     // only cells whose cost differs, through setCost(), so each touched
     // CostField bumps its version; sectors left unchanged keep theirs.
     const rect = this.dirtyRectOf(dirtySectors);
-    const changes: { ne: number, se: number, cost: number }[] = [];
+    const changes: { ne: number; se: number; cost: number }[] = [];
     for (let se = rect.minSe; se <= rect.maxSe; se++) {
       for (let ne = rect.minNe; ne <= rect.maxNe; ne++) {
         changes.push({ ne, se, cost: this.dynamicCost[ne + se * this.cols]! });
@@ -1409,10 +1402,10 @@ export class World {
   }
 
   /**
-     * Re-stamp the dynamic cost layer under the dirty sectors: clear the
-     * covered rectangle to the static layer, then stamp every obstacle that
-     * intersects it.
-     */
+   * Re-stamp the dynamic cost layer under the dirty sectors: clear the
+   * covered rectangle to the static layer, then stamp every obstacle that
+   * intersects it.
+   */
   private restampDirtyCells(dirtySectors: Sector[]): void {
     const rect = this.dirtyRectOf(dirtySectors);
     for (let se = rect.minSe; se <= rect.maxSe; se++) {
@@ -1439,7 +1432,7 @@ export class World {
   }
 
   /** Bounding rectangle of the dirty sectors, in cells. */
-  private dirtyRectOf(dirtySectors: Sector[]): { minNe: number, minSe: number, maxNe: number, maxSe: number } {
+  private dirtyRectOf(dirtySectors: Sector[]): { minNe: number; minSe: number; maxNe: number; maxSe: number } {
     let minNe = this.cols;
     let minSe = this.rows;
     let maxNe = -1;
@@ -1455,10 +1448,10 @@ export class World {
   }
 
   /**
-     * Recompute the walkable components of one sector: each one gets its own
-     * flow field. Portal exits need no patching, `Sector.connectExits()`
-     * already links only portals that reach each other inside the sector.
-     */
+   * Recompute the walkable components of one sector: each one gets its own
+   * flow field. Portal exits need no patching, `Sector.connectExits()`
+   * already links only portals that reach each other inside the sector.
+   */
   private computeSectorComponents(sector: Sector): void {
     const portals = sector.getPortals();
     const cells = componentsOf(sector.getCostField().getCosts());
@@ -1512,15 +1505,15 @@ export class World {
   }
 
   /**
-     * Integrate the flow fields every mob follows: one per walkable component of
-     * every sector. The component holding the target flows towards it, all
-     * others towards the portal that starts their cheapest route to it.
-     *
-     * Every sector is revisited: a target move or a portal change anywhere can
-     * flip which exit is cheapest in a sector far from the change. That is
-     * cheap — `buildSectorFlow` re-integrates only components whose sink,
-     * cost field or components changed, and keeps the cells of the rest.
-     */
+   * Integrate the flow fields every mob follows: one per walkable component of
+   * every sector. The component holding the target flows towards it, all
+   * others towards the portal that starts their cheapest route to it.
+   *
+   * Every sector is revisited: a target move or a portal change anywhere can
+   * flip which exit is cheapest in a sector far from the change. That is
+   * cheap — `buildSectorFlow` re-integrates only components whose sink,
+   * cost field or components changed, and keeps the cells of the rest.
+   */
   private refreshFlowFields(): void {
     // Timed inside the guard: an unchanged version does no work, and
     // sampling that would average the real integration cost away.
@@ -1551,12 +1544,12 @@ export class World {
     const targetLocal = grid.globalToLocal(target.ne, target.se);
     const targetIdx = targetLocal.localNe + targetLocal.localSe * SECTOR_SIZE;
     const targetComponent = this.sectorComponents.get(targetSector.getId())?.cells[targetIdx] ?? -1;
-    const routeCosts = routeCostsToTarget(grid, targetSector, target, (portal) => {
+    const routeCosts = routeCostsToTarget(grid, targetSector, target, portal => {
       return this.sectorComponents.get(targetSector.getId())?.portalComponent.get(portal.getId()) === targetComponent;
     });
 
     for (const sector of grid.getSectors()) {
-      this.buildSectorFlow(sector, targetSector, targetIdx, routeCosts, (n) => {
+      this.buildSectorFlow(sector, targetSector, targetIdx, routeCosts, n => {
         integrations += n;
       });
     }
@@ -1566,10 +1559,10 @@ export class World {
   }
 
   /**
-     * Integrate and store the flow of one sector. Components whose sink is
-     * unchanged since the last integration keep their cells — two flows into
-     * the same sink through the same cost field are equal.
-     */
+   * Integrate and store the flow of one sector. Components whose sink is
+   * unchanged since the last integration keep their cells — two flows into
+   * the same sink through the same cost field are equal.
+   */
   private buildSectorFlow(
     sector: Sector,
     targetSector: Sector,
@@ -1675,7 +1668,12 @@ export class World {
   }
 
   /** Portal of one sector component with the cheapest route to the target. */
-  private cheapestExit(sector: Sector, component: number, components: SectorComponents, routeCosts: Map<string, number>): Portal | undefined {
+  private cheapestExit(
+    sector: Sector,
+    component: number,
+    components: SectorComponents,
+    routeCosts: Map<string, number>,
+  ): Portal | undefined {
     let best: Portal | undefined;
     let bestCost = Infinity;
 
@@ -1727,10 +1725,10 @@ export class World {
   }
 
   /**
-     * Follow the flow fields from the mob's cell to the target. The trace is the
-     * route drawn on the canvas, and reaching the target is what clears the
-     * mob's blocked flag.
-     */
+   * Follow the flow fields from the mob's cell to the target. The trace is the
+   * route drawn on the canvas, and reaching the target is what clears the
+   * mob's blocked flag.
+   */
   private traceMob(mob: Mob): void {
     mob.traceVersion = this.version;
 
@@ -1838,19 +1836,16 @@ export class World {
             if (nearestFree) {
               aimX = nearestFree.ne * CELL_SIZE + CELL_SIZE / 2;
               aimY = nearestFree.se * CELL_SIZE + CELL_SIZE / 2;
-            }
-            else {
+            } else {
               aimX = mob.x;
               aimY = mob.y;
             }
-          }
-          else {
+          } else {
             const delta = this.flowAt(cell);
             if (delta) {
               aimX = (cell.ne + delta[0]) * CELL_SIZE + CELL_SIZE / 2;
               aimY = (cell.se + delta[1]) * CELL_SIZE + CELL_SIZE / 2;
-            }
-            else {
+            } else {
               aimX = mob.x;
               aimY = mob.y;
             }
@@ -1920,7 +1915,13 @@ export class World {
  * Copy a cell layer into a new size, keeping the overlapping top-left part.
  * Cells outside the old layer are free.
  */
-function resizeLayer(layer: Uint8Array, oldCols: number, oldRows: number, cols: number, rows: number): Uint8Array<ArrayBuffer> {
+function resizeLayer(
+  layer: Uint8Array,
+  oldCols: number,
+  oldRows: number,
+  cols: number,
+  rows: number,
+): Uint8Array<ArrayBuffer> {
   const next = new Uint8Array(cols * rows).fill(COST_MIN);
   const copyCols = Math.min(cols, oldCols);
   const copyRows = Math.min(rows, oldRows);
@@ -1946,8 +1947,8 @@ function entryCells(sectorId: SectorId, portal: Portal): TileDelta[] {
 /** Walkable components of one sector and which of them each portal sits in. */
 interface SectorComponents {
   /** Component id per local cell; -1 for impassable cells. */
-  readonly cells: Int16Array
-  readonly portalComponent: Map<PortalId, number>
+  readonly cells: Int16Array;
+  readonly portalComponent: Map<PortalId, number>;
 }
 
 /** Key of a portal crossing: leaving `sectorId` through `portalId`. */
@@ -1981,8 +1982,7 @@ function routeCostsToTarget(
     costs.set(key, cost);
     if (heap.has(key)) {
       heap.updatePriority(key, cost);
-    }
-    else {
+    } else {
       heap.push(key, cost);
     }
   };
@@ -2024,7 +2024,10 @@ function routeCostsToTarget(
     const center = globalPortalCenter(grid, sectorId, portal);
     for (const previous of portal.getConnected(sectorId)) {
       const previousCenter = globalPortalCenter(grid, sectorId, previous);
-      push(crossingKey(previous.getId(), previous.getExitSector(sectorId)), cost + tileEuclidean(center, previousCenter));
+      push(
+        crossingKey(previous.getId(), previous.getExitSector(sectorId)),
+        cost + tileEuclidean(center, previousCenter),
+      );
     }
   }
 

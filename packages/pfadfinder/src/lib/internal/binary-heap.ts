@@ -1,6 +1,6 @@
 export interface HeapNode<T> {
-  readonly item: T
-  priority: number
+  readonly item: T;
+  priority: number;
 }
 
 /**
@@ -68,8 +68,7 @@ export class BinaryHeap<T> {
     this.nodes[idx]!.priority = priority;
     if (priority < oldPriority) {
       this.siftUp(idx);
-    }
-    else if (priority > oldPriority) {
+    } else if (priority > oldPriority) {
       this.siftDown(idx);
     }
     return true;
@@ -95,8 +94,7 @@ export class BinaryHeap<T> {
       if (this.nodes[idx]!.priority < this.nodes[parent]!.priority) {
         this.swap(idx, parent);
         idx = parent;
-      }
-      else {
+      } else {
         break;
       }
     }
@@ -119,8 +117,7 @@ export class BinaryHeap<T> {
       if (smallest !== idx) {
         this.swap(idx, smallest);
         idx = smallest;
-      }
-      else {
+      } else {
         break;
       }
     }

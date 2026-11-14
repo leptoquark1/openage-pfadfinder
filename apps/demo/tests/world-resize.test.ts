@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CELL_SIZE, World } from '../src/world/world.js';
 
-function cellOf(x: number, y: number): { ne: number, se: number } {
+function cellOf(x: number, y: number): { ne: number; se: number } {
   return { ne: Math.floor(x / CELL_SIZE), se: Math.floor(y / CELL_SIZE) };
 }
 

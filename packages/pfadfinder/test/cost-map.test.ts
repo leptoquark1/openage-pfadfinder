@@ -18,16 +18,7 @@ function parseMap(rows: string[]): Uint8Array {
 }
 
 // A walled-off room in the bottom right corner
-const MAP = parseMap([
-  '........',
-  '........',
-  '........',
-  '........',
-  '....####',
-  '....#...',
-  '....#...',
-  '....#...',
-]);
+const MAP = parseMap(['........', '........', '........', '........', '....####', '....#...', '....#...', '....#...']);
 
 describe('buildGrid', () => {
   it('splits the global map into sector cost fields', () => {

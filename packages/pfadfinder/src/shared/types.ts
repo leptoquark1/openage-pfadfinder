@@ -25,42 +25,42 @@ export enum PortalDirection {
 }
 
 export interface TileDelta {
-  readonly ne: number
-  readonly se: number
+  readonly ne: number;
+  readonly se: number;
 }
 
 export interface Tile3 {
-  readonly ne: number
-  readonly se: number
-  readonly up: number
+  readonly ne: number;
+  readonly se: number;
+  readonly up: number;
 }
 
 export interface PathRequest {
-  readonly gridId: GridId
-  readonly start: TileDelta
-  readonly target: TileDelta
+  readonly gridId: GridId;
+  readonly start: TileDelta;
+  readonly target: TileDelta;
 }
 
 export interface Waypoint {
-  readonly ne: number
-  readonly se: number
+  readonly ne: number;
+  readonly se: number;
 }
 
 export interface Path {
-  readonly result: PathResult
-  readonly waypoints: Waypoint[]
+  readonly result: PathResult;
+  readonly waypoints: Waypoint[];
 }
 
 /** Width/height pair for grid and sector dimensions. */
 export interface Size2s {
-  readonly width: number
-  readonly height: number
+  readonly width: number;
+  readonly height: number;
 }
 
 /** x/y pair for grid positions (e.g. a sector's position in the grid). */
 export interface Vector2s {
-  readonly x: number
-  readonly y: number
+  readonly x: number;
+  readonly y: number;
 }
 
 export type CacheKey = string;

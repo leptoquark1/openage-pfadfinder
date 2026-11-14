@@ -13,16 +13,9 @@ import type { GridId, Size2s, TileDelta } from '../types.js';
  * Build a `Grid` with initialized portals from a global cost map.
  * `size` is in cells and must be a multiple of `sectorSize` on both axes.
  */
-export function buildGrid(
-  costs: Uint8Array,
-  size: Size2s,
-  sectorSize: number,
-  gridId: GridId = 0,
-): Grid {
+export function buildGrid(costs: Uint8Array, size: Size2s, sectorSize: number, gridId: GridId = 0): Grid {
   if (size.width % sectorSize !== 0 || size.height % sectorSize !== 0) {
-    throw new Error(
-      `map size ${size.width}x${size.height} is not a multiple of sector size ${sectorSize}`,
-    );
+    throw new Error(`map size ${size.width}x${size.height} is not a multiple of sector size ${sectorSize}`);
   }
   if (costs.length !== size.width * size.height) {
     throw new Error(`cost map has ${costs.length} cells, expected ${size.width * size.height}`);
@@ -76,12 +69,7 @@ export function reachableFrom(costs: Uint8Array, size: Size2s, start: TileDelta)
   while (head < tail) {
     const idx = queue[head++]!;
     const x = idx % width;
-    const neighbours = [
-      x > 0 ? idx - 1 : -1,
-      x < width - 1 ? idx + 1 : -1,
-      idx - width,
-      idx + width,
-    ];
+    const neighbours = [x > 0 ? idx - 1 : -1, x < width - 1 ? idx + 1 : -1, idx - width, idx + width];
     for (const n of neighbours) {
       if (n >= 0 && n < seen.length && !seen[n] && costs[n] !== COST_IMPASSABLE) {
         seen[n] = 1;
@@ -107,11 +95,11 @@ export function nearestReachable(
   const reachable = reachableFrom(costs, size, from);
   const { width, height } = size;
   if (
-    target.ne >= 0
-    && target.se >= 0
-    && target.ne < width
-    && target.se < height
-    && reachable[target.ne + target.se * width]
+    target.ne >= 0 &&
+    target.se >= 0 &&
+    target.ne < width &&
+    target.se < height &&
+    reachable[target.ne + target.se * width]
   ) {
     return { ne: target.ne, se: target.se };
   }

@@ -18,7 +18,7 @@ export function App() {
   const [showLegend, setShowLegend] = useState(true);
   const [mazeActive, setMazeActive] = useState(false);
   // Obstacles the labyrinth would remove, while its confirmation is open.
-  const [mazeConfirm, setMazeConfirm] = useState<{ walls: number, moving: number } | null>(null);
+  const [mazeConfirm, setMazeConfirm] = useState<{ walls: number; moving: number } | null>(null);
   const [stats, setStats] = useState<WorldStats>(EMPTY_STATS);
 
   const handleMode = useCallback(
@@ -121,15 +121,9 @@ export function App() {
         onConfirm={handleConfirmLabyrinth}
         onCancel={handleCancelLabyrinth}
       >
-        The maze replaces all existing obstacles:
-        {' '}
-        <span className="text-fg">{mazeConfirm?.walls ?? 0}</span>
-        {' '}
-        walls and
-        {' '}
-        <span className="text-fg">{mazeConfirm?.moving ?? 0}</span>
-        {' '}
-        moving obstacles will be removed. The target and mobs are kept.
+        The maze replaces all existing obstacles: <span className="text-fg">{mazeConfirm?.walls ?? 0}</span> walls and{' '}
+        <span className="text-fg">{mazeConfirm?.moving ?? 0}</span> moving obstacles will be removed. The target and
+        mobs are kept.
       </ConfirmDialog>
     </div>
   );

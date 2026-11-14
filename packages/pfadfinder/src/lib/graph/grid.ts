@@ -37,8 +37,7 @@ export class Grid {
 
     if (typeof param === 'number') {
       this.sectorSize = param;
-    }
-    else {
+    } else {
       this.sectors = param;
       this.sectorSize = param[0]?.getCostField().getSize() ?? 10;
       // Sectors may come with portals already; new ids must not reuse theirs.
@@ -136,9 +135,7 @@ export class Grid {
 
       const oldPortals = sector
         .getPortals()
-        .filter(p =>
-          this.isEdgePortal(p.getSector0(), p.getSector1(), sector.getId(), other.getId()),
-        );
+        .filter(p => this.isEdgePortal(p.getSector0(), p.getSector1(), sector.getId(), other.getId()));
 
       // Ranges an old portal already spans keep that portal (identity and
       // exits); only new ranges take an id. Vanished ones are dropped below.
@@ -203,9 +200,7 @@ export class Grid {
     // A dropped portal was removed from both its sectors, and
     // rebuildPortals() reports both as changed.
     const touched = (node: PortalNode): boolean =>
-      !only
-      || only.has(node.portal.getSector0())
-      || only.has(node.portal.getSector1());
+      !only || only.has(node.portal.getSector0()) || only.has(node.portal.getSector1());
 
     const live = new Set<PortalId>();
     const refresh: PortalNode[] = [];
@@ -253,11 +248,7 @@ export class Grid {
         if (y < this.size.height - 1) {
           const below = this.getSector(x, y + 1);
           if (below) {
-            const portals = sector.findPortals(
-              below,
-              PortalDirection.NORTH_SOUTH,
-              this.allocatePortalId,
-            );
+            const portals = sector.findPortals(below, PortalDirection.NORTH_SOUTH, this.allocatePortalId);
             for (const portal of portals) {
               sector.addPortal(portal);
               below.addPortal(portal);
@@ -269,11 +260,7 @@ export class Grid {
         if (x < this.size.width - 1) {
           const right = this.getSector(x + 1, y);
           if (right) {
-            const portals = sector.findPortals(
-              right,
-              PortalDirection.EAST_WEST,
-              this.allocatePortalId,
-            );
+            const portals = sector.findPortals(right, PortalDirection.EAST_WEST, this.allocatePortalId);
             for (const portal of portals) {
               sector.addPortal(portal);
               right.addPortal(portal);
@@ -318,7 +305,7 @@ export class Grid {
   globalToLocal(
     globalNe: number,
     globalSe: number,
-  ): { sectorX: number, sectorY: number, localNe: number, localSe: number } {
+  ): { sectorX: number; sectorY: number; localNe: number; localSe: number } {
     const sectorX = Math.floor(globalNe / this.sectorSize);
     const sectorY = Math.floor(globalSe / this.sectorSize);
     const localNe = globalNe % this.sectorSize;
@@ -348,9 +335,7 @@ export class Grid {
    * Every call costs a rebuild of the touched sectors' portals; pass the
    * changes that happen together in one call.
    */
-  updateCosts(
-    changes: readonly { readonly ne: number, readonly se: number, readonly cost: number }[],
-  ): Set<SectorId> {
+  updateCosts(changes: readonly { readonly ne: number; readonly se: number; readonly cost: number }[]): Set<SectorId> {
     const dirty = new Set<Sector>();
     for (const { ne, se, cost } of changes) {
       const sector = this.getSectorAt(ne, se);

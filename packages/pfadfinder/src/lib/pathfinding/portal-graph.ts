@@ -5,9 +5,9 @@ import type { Portal } from '../graph/portal.js';
 import { BinaryHeap } from '../internal/binary-heap.js';
 
 export interface PortalStarResult {
-  readonly found: boolean
-  readonly portals: Portal[]
-  readonly partial: boolean
+  readonly found: boolean;
+  readonly portals: Portal[];
+  readonly partial: boolean;
 }
 
 /**
@@ -37,13 +37,7 @@ export class PortalNode {
     pastCost: number,
     heuristicCost: number,
   );
-  constructor(
-    portal: Portal,
-    entrySector?: SectorId,
-    prev?: PortalNode,
-    pastCost?: number,
-    heuristicCost?: number,
-  ) {
+  constructor(portal: Portal, entrySector?: SectorId, prev?: PortalNode, pastCost?: number, heuristicCost?: number) {
     this.portal = portal;
     this.entrySector = entrySector;
     this.prevPortal = prev;
@@ -112,12 +106,7 @@ export class PortalNode {
   /**
    * Convert sector-local coordinates to global tile coordinates.
    */
-  static localToGlobal(
-    grid: Grid,
-    sectorId: SectorId,
-    localNe: number,
-    localSe: number,
-  ): TileDelta {
+  static localToGlobal(grid: Grid, sectorId: SectorId, localNe: number, localSe: number): TileDelta {
     const sectorSize = grid.getSectorSize();
     const sectorPos = grid.getSectorPosition(sectorId);
     return { ne: sectorPos.x * sectorSize + localNe, se: sectorPos.y * sectorSize + localSe };
@@ -133,12 +122,12 @@ export class PortalNode {
  * in lightweight wrapper objects to avoid mutating the shared nodeMap nodes.
  */
 interface SearchNode {
-  portalNode: PortalNode
-  entrySector: SectorId
-  currentCost: number
-  heuristicCost: number
-  futureCost: number
-  prev: SearchNode | undefined
+  portalNode: PortalNode;
+  entrySector: SectorId;
+  currentCost: number;
+  heuristicCost: number;
+  futureCost: number;
+  prev: SearchNode | undefined;
 }
 
 export function portalAStar(
@@ -237,12 +226,7 @@ export function portalAStar(
       // and arrive in exitPortal.getExitSector(current.entrySector).
       const exitEntrySector = exitPortal.getExitSector(current.entrySector);
       const exitCenter = exitPortal.getEntryCenter(current.entrySector);
-      const exitCenterGlobal = PortalNode.localToGlobal(
-        grid,
-        current.entrySector,
-        exitCenter.ne,
-        exitCenter.se,
-      );
+      const exitCenterGlobal = PortalNode.localToGlobal(grid, current.entrySector, exitCenter.ne, exitCenter.se);
       const newCost = current.currentCost + distanceCost;
       const h = PortalNode.heuristicCost(exitCenterGlobal, targetPosGlobal);
       const futureCost = newCost + h;
@@ -263,8 +247,7 @@ export function portalAStar(
         if (!closestNode || h < closestNode.heuristicCost) {
           closestNode = sn;
         }
-      }
-      else if (newCost < existing.currentCost) {
+      } else if (newCost < existing.currentCost) {
         existing.currentCost = newCost;
         existing.heuristicCost = h;
         existing.futureCost = futureCost;
@@ -275,8 +258,7 @@ export function portalAStar(
         if (!closestNode || h < closestNode.heuristicCost) {
           closestNode = existing;
         }
-      }
-      else if (existing.prev === undefined && existing.entrySector !== exitEntrySector) {
+      } else if (existing.prev === undefined && existing.entrySector !== exitEntrySector) {
         // A start node reached internally via a sibling start portal, from a
         // different sector side than its initial (uncrossed) state. This
         // represents genuinely crossing the portal — a different traversal

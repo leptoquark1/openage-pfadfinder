@@ -3,9 +3,9 @@ import type { FlowField } from '../core/flow-field.js';
 import type { IntegrationField } from '../core/integration-field.js';
 
 export interface CacheEntry {
-  readonly integrationField: IntegrationField
-  readonly flowField: FlowField
-  costFieldVersion: number
+  readonly integrationField: IntegrationField;
+  readonly flowField: FlowField;
+  costFieldVersion: number;
 }
 
 /**

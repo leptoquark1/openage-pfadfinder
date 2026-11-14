@@ -31,10 +31,10 @@ export type Mode = 'target' | 'mob' | 'obstacle' | 'movingObstacle' | 'patrolObs
 export type ModeType = 'target' | 'spawn' | 'obstacle';
 
 export interface ModeDescriptor {
-  readonly id: Mode
-  readonly label: string
-  readonly icon: LucideIcon
-  readonly type: ModeType
+  readonly id: Mode;
+  readonly label: string;
+  readonly icon: LucideIcon;
+  readonly type: ModeType;
 }
 
 export const MODES: ModeDescriptor[] = [

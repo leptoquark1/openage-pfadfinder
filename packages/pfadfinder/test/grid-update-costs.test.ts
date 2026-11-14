@@ -11,12 +11,7 @@ const SECTOR = 8;
 const SIZE = SECTOR * 2;
 
 function setup() {
-  const grid = buildGrid(
-    new Uint8Array(SIZE * SIZE).fill(COST_MIN),
-    { width: SIZE, height: SIZE },
-    SECTOR,
-    0,
-  );
+  const grid = buildGrid(new Uint8Array(SIZE * SIZE).fill(COST_MIN), { width: SIZE, height: SIZE }, SECTOR, 0);
   const pf = new Pathfinder();
   pf.addGrid(grid);
   return { grid, pf };
@@ -30,10 +25,7 @@ function crosses(waypoints: readonly Waypoint[], ne: number, se: number): boolea
     const steps = Math.ceil(Math.hypot(b.ne - a.ne, b.se - a.se) * 20);
     for (let k = 0; k <= steps; k++) {
       const t = steps === 0 ? 0 : k / steps;
-      if (
-        Math.floor(a.ne + 0.5 + (b.ne - a.ne) * t) === ne
-        && Math.floor(a.se + 0.5 + (b.se - a.se) * t) === se
-      ) {
+      if (Math.floor(a.ne + 0.5 + (b.ne - a.ne) * t) === ne && Math.floor(a.se + 0.5 + (b.se - a.se) * t) === se) {
         return true;
       }
     }
@@ -44,12 +36,7 @@ function crosses(waypoints: readonly Waypoint[], ne: number, se: number): boolea
 describe('Grid.updateCosts', () => {
   it('does not reuse portal ids of sectors handed to the constructor', () => {
     const size = 3 * SECTOR;
-    const source = buildGrid(
-      new Uint8Array(size * size).fill(COST_MIN),
-      { width: size, height: size },
-      SECTOR,
-      0,
-    );
+    const source = buildGrid(new Uint8Array(size * size).fill(COST_MIN), { width: size, height: size }, SECTOR, 0);
     const grid = new Grid(1, { width: 3, height: 3 }, source.getSectors());
     grid.initPortalNodes();
     grid.updateCosts([
@@ -91,12 +78,7 @@ describe('Grid.updateCosts', () => {
   it('refreshes only the portal nodes of the sectors whose portals changed', () => {
     const sectors = 4;
     const cells = SECTOR * sectors;
-    const grid = buildGrid(
-      new Uint8Array(cells * cells).fill(COST_MIN),
-      { width: cells, height: cells },
-      SECTOR,
-      0,
-    );
+    const grid = buildGrid(new Uint8Array(cells * cells).fill(COST_MIN), { width: cells, height: cells }, SECTOR, 0);
     const initExits = vi.spyOn(PortalNode.prototype, 'initExits');
     // a unit stops inside sector (1, 1), away from its borders
     const changed = grid.updateCosts([{ ne: SECTOR + 3, se: SECTOR + 3, cost: COST_IMPASSABLE }]);
@@ -113,12 +95,7 @@ describe('Grid.updateCosts', () => {
 
   it('builds the whole portal graph on the first update of a grid that has none', () => {
     const size = 3 * SECTOR;
-    const source = buildGrid(
-      new Uint8Array(size * size).fill(COST_MIN),
-      { width: size, height: size },
-      SECTOR,
-      0,
-    );
+    const source = buildGrid(new Uint8Array(size * size).fill(COST_MIN), { width: size, height: size }, SECTOR, 0);
     // sectors with portals, but the new grid never ran initPortalNodes()
     const grid = new Grid(1, { width: 3, height: 3 }, source.getSectors());
     const pf = new Pathfinder();
@@ -179,8 +156,14 @@ describe('Grid.updateCosts', () => {
     const fresh = new Pathfinder();
     fresh.addGrid(buildGrid(costs, { width: cells, height: cells }, SECTOR, 0));
     for (const [start, target] of [
-      [{ ne: 1, se: 1 }, { ne: 20, se: 1 }],
-      [{ ne: 20, se: 6 }, { ne: 2, se: 3 }],
+      [
+        { ne: 1, se: 1 },
+        { ne: 20, se: 1 },
+      ],
+      [
+        { ne: 20, se: 6 },
+        { ne: 2, se: 3 },
+      ],
     ] as const) {
       const request = { gridId: 0, start, target };
       expect(fresh.getFlowRoute(request)).not.toBeNull();
@@ -206,7 +189,7 @@ describe('Grid.updateCosts', () => {
       const from = pick(cells);
       const length = 1 + pick(3);
       const cost = rand() < 0.55 ? COST_IMPASSABLE : COST_MIN;
-      const changes: { ne: number, se: number, cost: number }[] = [];
+      const changes: { ne: number; se: number; cost: number }[] = [];
       for (let i = 0; i < length && from + i < cells; i++) {
         const [ne, se] = vertical ? [border, from + i] : [from + i, border];
         costs[ne + se * cells] = cost;
@@ -214,7 +197,10 @@ describe('Grid.updateCosts', () => {
       }
       grid.updateCosts(changes);
 
-      const ids = grid.getSectors().flatMap(s => s.getPortals()).map(p => p.getId());
+      const ids = grid
+        .getSectors()
+        .flatMap(s => s.getPortals())
+        .map(p => p.getId());
       const portals = new Set(grid.getSectors().flatMap(s => s.getPortals()));
       expect(new Set(ids).size, `step ${step}`).toBe(portals.size);
       expect(grid.getPortalMap().size, `step ${step}`).toBe(portals.size);

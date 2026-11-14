@@ -47,12 +47,7 @@ describe('Sector.findPortals', () => {
     // Row 2 closes: rows 0..1 and 3..4 are new, rows 6..7 survive.
     west.getCostField().setCost(size - 1, 2, COST_IMPASSABLE);
     let calls = 0;
-    const portals = west.findPortals(
-      east,
-      PortalDirection.EAST_WEST,
-      () => 100 + calls++,
-      old,
-    );
+    const portals = west.findPortals(east, PortalDirection.EAST_WEST, () => 100 + calls++, old);
 
     expect(calls).toBe(2);
     expect(portals.map(p => p.getId())).toEqual([100, 101, 1]);
@@ -83,14 +78,7 @@ describe('Sector.findPortals', () => {
 
 describe('Portal.matches / Portal.spans', () => {
   const make = (id: number, start: number, end: number): Portal =>
-    new Portal(
-      id,
-      0,
-      1,
-      PortalDirection.EAST_WEST,
-      { ne: size - 1, se: start },
-      { ne: size - 1, se: end },
-    );
+    new Portal(id, 0, 1, PortalDirection.EAST_WEST, { ne: size - 1, se: start }, { ne: size - 1, se: end });
 
   it('compares sectors, direction and range, not the id', () => {
     const portal = make(0, 0, 4);
@@ -99,6 +87,8 @@ describe('Portal.matches / Portal.spans', () => {
     expect(portal.matches(make(0, 0, 3))).toBe(false);
     expect(portal.spans(0, 1, PortalDirection.EAST_WEST, { ne: size - 1, se: 0 }, { ne: size - 1, se: 4 })).toBe(true);
     expect(portal.spans(0, 2, PortalDirection.EAST_WEST, { ne: size - 1, se: 0 }, { ne: size - 1, se: 4 })).toBe(false);
-    expect(portal.spans(0, 1, PortalDirection.NORTH_SOUTH, { ne: size - 1, se: 0 }, { ne: size - 1, se: 4 })).toBe(false);
+    expect(portal.spans(0, 1, PortalDirection.NORTH_SOUTH, { ne: size - 1, se: 0 }, { ne: size - 1, se: 4 })).toBe(
+      false,
+    );
   });
 });

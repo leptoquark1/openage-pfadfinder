@@ -1,11 +1,6 @@
 import { COST_IMPASSABLE } from '../../shared/constants.js';
 import { xyToIndex } from '../../shared/coordinates.js';
-import {
-  PortalDirection,
-  type PortalId,
-  type SectorId,
-  type Vector2s,
-} from '../../shared/types.js';
+import { PortalDirection, type PortalId, type SectorId, type Vector2s } from '../../shared/types.js';
 import type { CostField } from '../core/cost-field.js';
 import { Portal } from './portal.js';
 
@@ -87,12 +82,8 @@ export class Sector {
     const emit = (from: number, to: number): void => {
       const cellStart = northSouth ? { ne: from, se: edge } : { ne: edge, se: from };
       const cellEnd = northSouth ? { ne: to, se: edge } : { ne: edge, se: to };
-      const previous = reuse.find(p =>
-        p.spans(this.id, other.getId(), direction, cellStart, cellEnd),
-      );
-      portals.push(
-        previous ?? new Portal(allocate(), this.id, other.getId(), direction, cellStart, cellEnd),
-      );
+      const previous = reuse.find(p => p.spans(this.id, other.getId(), direction, cellStart, cellEnd));
+      portals.push(previous ?? new Portal(allocate(), this.id, other.getId(), direction, cellStart, cellEnd));
     };
 
     let runStart = -1;
@@ -107,8 +98,7 @@ export class Sector {
 
       if (passable && runStart < 0) {
         runStart = i;
-      }
-      else if (!passable && runStart >= 0) {
+      } else if (!passable && runStart >= 0) {
         emit(runStart, i - 1);
         runStart = -1;
       }
@@ -137,7 +127,7 @@ export class Sector {
     let areaCount = 0;
 
     // The areas each portal's passable entry cells on this side lie in
-    const portalAreas = this.portals.map((portal) => {
+    const portalAreas = this.portals.map(portal => {
       const entryStart = portal.getEntryStart(this.id);
       const entryEnd = portal.getEntryEnd(this.id);
       const found = new Set<number>();

@@ -1,9 +1,4 @@
-import {
-  PortalDirection,
-  type PortalId,
-  type SectorId,
-  type TileDelta,
-} from '../../shared/types.js';
+import { PortalDirection, type PortalId, type SectorId, type TileDelta } from '../../shared/types.js';
 
 /**
  * Bidirectional gateway connecting two adjacent sectors.
@@ -80,8 +75,7 @@ export class Portal {
   setExits(sectorId: SectorId, exits: Portal[]): void {
     if (sectorId === this.sector0) {
       this.sector0Exits = exits;
-    }
-    else if (sectorId === this.sector1) {
+    } else if (sectorId === this.sector1) {
       this.sector1Exits = exits;
     }
   }
@@ -92,13 +86,7 @@ export class Portal {
    * portal's identity across incremental rebuilds.
    */
   matches(other: Portal): boolean {
-    return this.spans(
-      other.sector0,
-      other.sector1,
-      other.direction,
-      other.cellStart,
-      other.cellEnd,
-    );
+    return this.spans(other.sector0, other.sector1, other.direction, other.cellStart, other.cellEnd);
   }
 
   /**
@@ -114,13 +102,13 @@ export class Portal {
     cellEnd: TileDelta,
   ): boolean {
     return (
-      this.direction === direction
-      && this.sector0 === sector0
-      && this.sector1 === sector1
-      && this.cellStart.ne === cellStart.ne
-      && this.cellStart.se === cellStart.se
-      && this.cellEnd.ne === cellEnd.ne
-      && this.cellEnd.se === cellEnd.se
+      this.direction === direction &&
+      this.sector0 === sector0 &&
+      this.sector1 === sector1 &&
+      this.cellStart.ne === cellStart.ne &&
+      this.cellStart.se === cellStart.se &&
+      this.cellEnd.ne === cellEnd.ne &&
+      this.cellEnd.se === cellEnd.se
     );
   }
 

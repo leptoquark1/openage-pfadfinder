@@ -7,7 +7,7 @@ function px(cell: number): number {
 }
 
 /** Free cells reachable from `start`, 4-connected. */
-function reachable(world: World, start: { ne: number, se: number }): Uint8Array {
+function reachable(world: World, start: { ne: number; se: number }): Uint8Array {
   const cols = world.getCols();
   const rows = world.getRows();
   const costs = world.getStaticCost();
@@ -18,7 +18,12 @@ function reachable(world: World, start: { ne: number, se: number }): Uint8Array 
     const idx = queue.pop()!;
     const ne = idx % cols;
     const se = Math.floor(idx / cols);
-    for (const [n, s] of [[ne - 1, se], [ne + 1, se], [ne, se - 1], [ne, se + 1]] as const) {
+    for (const [n, s] of [
+      [ne - 1, se],
+      [ne + 1, se],
+      [ne, se - 1],
+      [ne, se + 1],
+    ] as const) {
       if (n < 0 || s < 0 || n >= cols || s >= rows) {
         continue;
       }
@@ -34,8 +39,8 @@ function reachable(world: World, start: { ne: number, se: number }): Uint8Array 
 }
 
 /** Cells a mob's body overlaps at its current position, plus its spawn cell. */
-function mobCells(world: World): { ne: number, se: number }[] {
-  const cells: { ne: number, se: number }[] = [];
+function mobCells(world: World): { ne: number; se: number }[] {
+  const cells: { ne: number; se: number }[] = [];
   for (const mob of world.getMobs()) {
     for (const [x, y] of [
       [mob.x - MOB_RADIUS, mob.y - MOB_RADIUS],

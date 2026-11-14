@@ -3,10 +3,10 @@ import { Activity, BrickWall, Dices, Eye, Info, RotateCcw, Route } from 'lucide-
 import { MODES, type Mode } from '../theme.js';
 
 interface ToolbarButtonProps {
-  active?: boolean
-  icon: LucideIcon
-  label: string
-  onClick: () => void
+  active?: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
 }
 
 function ToolbarButton({ active = false, icon: Icon, label, onClick }: ToolbarButtonProps) {
@@ -16,7 +16,9 @@ function ToolbarButton({ active = false, icon: Icon, label, onClick }: ToolbarBu
       onClick={onClick}
       aria-pressed={active}
       className={`flex w-full flex-col items-center gap-1.5 rounded-lg border px-1 py-2.5 transition-colors duration-150 ${
-        active ? 'border-border-strong bg-panel text-fg' : 'border-transparent text-muted hover:bg-panel/60 hover:text-fg'
+        active
+          ? 'border-border-strong bg-panel text-fg'
+          : 'border-transparent text-muted hover:bg-panel/60 hover:text-fg'
       }`}
     >
       <Icon size={18} strokeWidth={1.75} />
@@ -25,27 +27,33 @@ function ToolbarButton({ active = false, icon: Icon, label, onClick }: ToolbarBu
   );
 }
 
-function ToolbarSectionTitle({ label, mt }: { label: string, mt?: boolean }) {
-  return <div className={`${mt ? 'my-2' : 'mb-2'} pb-2 border-b border-divider text-center font-mono text-[10px] text-section tracking-[0.08em]`}>{label}</div>;
+function ToolbarSectionTitle({ label, mt }: { label: string; mt?: boolean }) {
+  return (
+    <div
+      className={`${mt ? 'my-2' : 'mb-2'} pb-2 border-b border-divider text-center font-mono text-[10px] text-section tracking-[0.08em]`}
+    >
+      {label}
+    </div>
+  );
 }
 
 interface ToolbarProps {
-  mode: Mode
-  onMode: (mode: Mode) => void
-  showFlow: boolean
-  onShowFlow: (show: boolean) => void
-  showTraces: boolean
-  onShowTraces: (show: boolean) => void
-  showPerf: boolean
-  onShowPerf: (show: boolean) => void
-  showLegend: boolean
-  onShowLegend: (show: boolean) => void
-  onReset: () => void
-  mazeActive: boolean
-  onToggleLabyrinth: () => void
-  onScatterWalls: () => void
-  mobCount: number
-  obstacleCount: number
+  mode: Mode;
+  onMode: (mode: Mode) => void;
+  showFlow: boolean;
+  onShowFlow: (show: boolean) => void;
+  showTraces: boolean;
+  onShowTraces: (show: boolean) => void;
+  showPerf: boolean;
+  onShowPerf: (show: boolean) => void;
+  showLegend: boolean;
+  onShowLegend: (show: boolean) => void;
+  onReset: () => void;
+  mazeActive: boolean;
+  onToggleLabyrinth: () => void;
+  onScatterWalls: () => void;
+  mobCount: number;
+  obstacleCount: number;
 }
 
 export function Toolbar({
@@ -96,16 +104,8 @@ export function Toolbar({
 
       <ToolbarSectionTitle label="Stats" mt={true} />
       <div className="pl-2 font-mono text-[11px] leading-[1.8] text-muted" aria-live="polite">
-        <div>
-          {mobCount}
-          {' '}
-          Mobs
-        </div>
-        <div>
-          {obstacleCount}
-          {' '}
-          Obst.
-        </div>
+        <div>{mobCount} Mobs</div>
+        <div>{obstacleCount} Obst.</div>
       </div>
     </div>
   );

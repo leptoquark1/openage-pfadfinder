@@ -166,10 +166,7 @@ describe('PortalNode exit costs', () => {
       for (const sector of [node.portal.getSector0(), node.portal.getSector1()]) {
         for (const [exitId, cost] of node.getExits(sector)) {
           const exit = grid.getPortalMap().get(exitId)!.portal;
-          const expected = PortalNode.distanceCost(
-            node.portal.getEntryCenter(sector),
-            exit.getEntryCenter(sector),
-          );
+          const expected = PortalNode.distanceCost(node.portal.getEntryCenter(sector), exit.getEntryCenter(sector));
           expect(cost, `#${node.portal.getId()} -> #${exitId} in sector ${sector}`).toBe(expected);
           checked++;
         }

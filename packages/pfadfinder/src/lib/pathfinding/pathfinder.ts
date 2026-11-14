@@ -76,18 +76,18 @@ export class Pathfinder {
 
     const totalCells = grid.getTotalCells();
     if (
-      request.target.ne < 0
-      || request.target.ne >= totalCells.width
-      || request.target.se < 0
-      || request.target.se >= totalCells.height
+      request.target.ne < 0 ||
+      request.target.ne >= totalCells.width ||
+      request.target.se < 0 ||
+      request.target.se >= totalCells.height
     ) {
       return pathOutOfBounds();
     }
     if (
-      request.start.ne < 0
-      || request.start.ne >= totalCells.width
-      || request.start.se < 0
-      || request.start.se >= totalCells.height
+      request.start.ne < 0 ||
+      request.start.ne >= totalCells.width ||
+      request.start.se < 0 ||
+      request.start.se >= totalCells.height
     ) {
       return pathOutOfBounds();
     }
@@ -104,10 +104,7 @@ export class Pathfinder {
       request.target.ne,
       request.target.se,
     );
-    const targetCostIdx = tileToIndex(
-      { ne: tLocalNe, se: tLocalSe },
-      targetSector.getCostField().getSize(),
-    );
+    const targetCostIdx = tileToIndex({ ne: tLocalNe, se: tLocalSe }, targetSector.getCostField().getSize());
     if (targetSector.getCostField().getCost(targetCostIdx) === COST_IMPASSABLE) {
       return pathNotFound();
     }
@@ -121,8 +118,8 @@ export class Pathfinder {
     // Same sector and connected inside it → single flow field. A sector
     // split by a wall falls through to the portal route instead.
     if (
-      startSector.getId() === targetSector.getId()
-      && this.reachableInSector(startSector, sLocalNe, sLocalSe).has(targetCostIdx)
+      startSector.getId() === targetSector.getId() &&
+      this.reachableInSector(startSector, sLocalNe, sLocalSe).has(targetCostIdx)
     ) {
       return this.getPathSingleSector(startSector, request);
     }
@@ -140,11 +137,7 @@ export class Pathfinder {
     );
 
     // single sector: use LOS for best path quality
-    const { flowField } = this.integrator.get(
-      sector.getCostField(),
-      { ne: tLocalNe, se: tLocalSe },
-      true,
-    );
+    const { flowField } = this.integrator.get(sector.getCostField(), { ne: tLocalNe, se: tLocalSe }, true);
 
     return new FlowRoute(grid, [{ sector, flowField }], request.target);
   }
@@ -202,9 +195,7 @@ export class Pathfinder {
     // through portals[i]; the last entry is the target sector.
     const routeSectors: Sector[] = [startSector];
     for (const portal of portals) {
-      const next = grid.getSector(
-        portal.getExitSector(routeSectors[routeSectors.length - 1]!.getId()),
-      );
+      const next = grid.getSector(portal.getExitSector(routeSectors[routeSectors.length - 1]!.getId()));
       if (!next) {
         return pathNotFound();
       }
@@ -283,7 +274,7 @@ export class Pathfinder {
     const size = sector.getCostField().getSize();
     const reachable = this.reachableInSector(sector, localNe, localSe);
 
-    return sector.getPortals().filter((portal) => {
+    return sector.getPortals().filter(portal => {
       const start = portal.getEntryStart(sector.getId());
       const end = portal.getEntryEnd(sector.getId());
       for (let y = start.se; y <= end.se; y++) {
@@ -297,11 +288,7 @@ export class Pathfinder {
     });
   }
 
-  private globalToLocalInSector(
-    grid: Grid,
-    ne: number,
-    se: number,
-  ): { localNe: number, localSe: number } {
+  private globalToLocalInSector(grid: Grid, ne: number, se: number): { localNe: number; localSe: number } {
     const { localNe, localSe } = grid.globalToLocal(ne, se);
     return { localNe, localSe };
   }

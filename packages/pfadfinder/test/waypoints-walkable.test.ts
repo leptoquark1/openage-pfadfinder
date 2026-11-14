@@ -52,8 +52,7 @@ function makeGrid(costs: Uint8Array): Grid {
       const local = new Uint8Array(SECTOR_SIZE * SECTOR_SIZE);
       for (let y = 0; y < SECTOR_SIZE; y++) {
         for (let x = 0; x < SECTOR_SIZE; x++) {
-          local[x + y * SECTOR_SIZE]
-            = costs[sx * SECTOR_SIZE + x + (sy * SECTOR_SIZE + y) * CELLS]!;
+          local[x + y * SECTOR_SIZE] = costs[sx * SECTOR_SIZE + x + (sy * SECTOR_SIZE + y) * CELLS]!;
         }
       }
       const cf = new CostField(SECTOR_SIZE);
@@ -173,8 +172,7 @@ describe('getFlowRoute() leads every unit on the route to the target', () => {
         const others: Waypoint[] = [];
         for (let tries = 0; tries < 400 && others.length < 8; tries++) {
           const cell = randomWalkable(costs, rand);
-          const sector
-            = Math.floor(cell.ne / SECTOR_SIZE) + Math.floor(cell.se / SECTOR_SIZE) * SECTORS;
+          const sector = Math.floor(cell.ne / SECTOR_SIZE) + Math.floor(cell.se / SECTOR_SIZE) * SECTORS;
           if (sectors.has(sector) && route!.next(cell.ne, cell.se)) {
             others.push(cell);
           }
