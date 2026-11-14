@@ -123,118 +123,93 @@ export class Sector {
 
   /**
    * Connect mutually reachable portals within this sector.
-   * Uses 4-connected BFS flood-fill from each portal's entry cells
-   * to determine which other portals are actually reachable through
-   * the cost field (not blocked by walls).
+   * Floods the 4-connected areas of passable cells the portals' entry cells
+   * lie in, once for the whole sector; two portals are exits of each other
+   * when their entry cells share an area (not split by walls).
    * Must be called after all sectors and portals are initialized.
    */
   connectExits(): void {
     const size = this.costField.getSize();
     const costCells = this.costField.getCosts();
+    // Area of each cell, 0 while no flood reached it; every cell is queued once.
+    const areas = new Int32Array(size * size);
+    const queue = new Int32Array(size * size);
+    let areaCount = 0;
 
-    // Collect entry cell indices for each portal on this sector's side
-    const portalEntryCells: Map<PortalId, number[]> = new Map();
-
-    for (const portal of this.portals) {
+    // The areas each portal's passable entry cells on this side lie in
+    const portalAreas = this.portals.map((portal) => {
       const entryStart = portal.getEntryStart(this.id);
       const entryEnd = portal.getEntryEnd(this.id);
-      const cells: number[] = [];
-
+      const found = new Set<number>();
       for (let y = entryStart.se; y <= entryEnd.se; y++) {
         for (let x = entryStart.ne; x <= entryEnd.ne; x++) {
           const idx = xyToIndex(x, y, size);
-          if (costCells[idx]! !== COST_IMPASSABLE) {
-            cells.push(idx);
-          }
-        }
-      }
-
-      portalEntryCells.set(portal.getId(), cells);
-    }
-
-    // For each portal, BFS flood-fill to find reachable portals
-    for (const portal of this.portals) {
-      const startCells = portalEntryCells.get(portal.getId())!;
-      if (startCells.length === 0) {
-        portal.setExits(this.id, []);
-        continue;
-      }
-
-      const visited = new Uint8Array(size * size);
-      const queue: number[] = [...startCells];
-      const reachablePortalIds = new Set<PortalId>();
-
-      for (const idx of startCells) {
-        visited[idx] = 1;
-      }
-
-      // Mark which portals are reachable at the start cells (excluding self)
-      for (const other of this.portals) {
-        if (other.getId() === portal.getId()) {
-          continue;
-        }
-        const otherCells = portalEntryCells.get(other.getId())!;
-        for (const cellIdx of startCells) {
-          if (otherCells.includes(cellIdx)) {
-            reachablePortalIds.add(other.getId());
-            break;
-          }
-        }
-      }
-
-      while (queue.length > 0) {
-        const idx = queue.shift()!;
-
-        // Check 4-connected neighbors
-        const x = idx % size;
-        const y = Math.floor(idx / size);
-
-        const neighbors: number[] = [];
-        if (y > 0) {
-          neighbors.push(idx - size);
-        }
-        if (x > 0) {
-          neighbors.push(idx - 1);
-        }
-        if (y < size - 1) {
-          neighbors.push(idx + size);
-        }
-        if (x < size - 1) {
-          neighbors.push(idx + 1);
-        }
-
-        for (const nIdx of neighbors) {
-          if (visited[nIdx]) {
+          if (costCells[idx]! === COST_IMPASSABLE) {
             continue;
           }
-          if (costCells[nIdx]! === COST_IMPASSABLE) {
-            continue;
+          if (areas[idx] === 0) {
+            floodArea(costCells, size, idx, ++areaCount, areas, queue);
           }
-
-          visited[nIdx] = 1;
-
-          // Check if this cell belongs to another portal's entry
-          for (const other of this.portals) {
-            if (other.getId() === portal.getId()) {
-              continue;
-            }
-            if (reachablePortalIds.has(other.getId())) {
-              continue;
-            }
-            const otherCells = portalEntryCells.get(other.getId())!;
-            if (otherCells.includes(nIdx)) {
-              reachablePortalIds.add(other.getId());
-            }
-          }
-
-          queue.push(nIdx);
+          found.add(areas[idx]!);
         }
       }
+      return found;
+    });
 
+    for (const [i, portal] of this.portals.entries()) {
+      const own = portalAreas[i]!;
       const connectedPortals = this.portals.filter(
-        p => p.getId() !== portal.getId() && reachablePortalIds.has(p.getId()),
+        (other, j) => other.getId() !== portal.getId() && sharesArea(own, portalAreas[j]!),
       );
       portal.setExits(this.id, connectedPortals);
+    }
+  }
+}
+
+function sharesArea(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
+  for (const area of a) {
+    if (b.has(area)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Give the 4-connected passable cells around `start` (all still 0 in
+ * `areas`) the area `area`, breadth first through `queue`.
+ */
+function floodArea(
+  costCells: Uint8Array,
+  size: number,
+  start: number,
+  area: number,
+  areas: Int32Array,
+  queue: Int32Array,
+): void {
+  let head = 0;
+  let tail = 0;
+  const visit = (idx: number): void => {
+    if (areas[idx] === 0 && costCells[idx] !== COST_IMPASSABLE) {
+      areas[idx] = area;
+      queue[tail++] = idx;
+    }
+  };
+  visit(start);
+  while (head < tail) {
+    const idx = queue[head++]!;
+    const x = idx % size;
+    if (idx >= size) {
+      visit(idx - size);
+    }
+    if (x > 0) {
+      visit(idx - 1);
+    }
+    if (idx < size * (size - 1)) {
+      visit(idx + size);
+    }
+    if (x < size - 1) {
+      visit(idx + 1);
     }
   }
 }
