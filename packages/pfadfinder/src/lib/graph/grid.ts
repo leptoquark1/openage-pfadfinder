@@ -19,6 +19,12 @@ export class Grid {
   private readonly sectorSize: number;
   private readonly sectors: Sector[] = [];
   private portalNodes: Map<PortalId, PortalNode> = new Map();
+  /**
+   * Whether the portal graph was built for every portal (`initPortalNodes()`
+   * or a full `rebuildPortalNodes()`); until then, a rebuild limited to some
+   * sectors would leave the nodes of all others missing.
+   */
+  private portalGraphBuilt = false;
   private nextPortalId: PortalId = 0;
   /** The single source of new portal ids for initPortals and rebuildPortals. */
   private readonly allocatePortalId = (): PortalId => this.nextPortalId++;
@@ -91,8 +97,8 @@ export class Grid {
    * untouched, including their cached exits.
    *
    * Returns every sector whose portal list changed (including the dirty
-   * sectors); their exits are flood-filled fresh. Call `rebuildPortalNodes()`
-   * afterwards to sync the portal graph.
+   * sectors); their exits are flood-filled fresh. Hand them to
+   * `rebuildPortalNodes()` afterwards to sync the portal graph.
    */
   rebuildPortals(dirtySectors: Sector[]): Set<SectorId> {
     if (dirtySectors.length === 0) {
@@ -178,30 +184,57 @@ export class Grid {
 
   /**
    * Sync portal graph nodes after `rebuildPortals()`. Nodes of dropped
-   * portals are evicted, new portals get fresh nodes, and every node's exit
-   * costs are recomputed. Cheaper than `initPortalNodes()` because nodes of
-   * surviving portals keep their identity.
+   * portals are evicted, new portals get fresh nodes, and exit costs are
+   * recomputed. Cheaper than `initPortalNodes()` because nodes of surviving
+   * portals keep their identity.
+   *
+   * Pass the sectors `rebuildPortals()` returned to refresh only the nodes
+   * of their portals: a node's exits lie in its portal's two sectors, so
+   * nodes of other portals stay as they are. Without them, or while the
+   * portal graph was never built (no `initPortalNodes()`), every node is
+   * refreshed.
    */
-  rebuildPortalNodes(): void {
+  rebuildPortalNodes(changedSectors?: ReadonlySet<SectorId>): void {
+    if (changedSectors?.size === 0) {
+      return;
+    }
+    const only = this.portalGraphBuilt ? changedSectors : undefined;
+    const sectors = only ? [...only].map(id => this.getSector(id)) : this.sectors;
+    // A dropped portal was removed from both its sectors, and
+    // rebuildPortals() reports both as changed.
+    const touched = (node: PortalNode): boolean =>
+      !only
+      || only.has(node.portal.getSector0())
+      || only.has(node.portal.getSector1());
+
     const live = new Set<PortalId>();
-    for (const sector of this.sectors) {
-      for (const portal of sector.getPortals()) {
-        live.add(portal.getId());
-        if (!this.portalNodes.has(portal.getId())) {
-          this.portalNodes.set(portal.getId(), new PortalNode(portal));
+    const refresh: PortalNode[] = [];
+    for (const sector of sectors) {
+      for (const portal of sector?.getPortals() ?? []) {
+        const id = portal.getId();
+        if (live.has(id)) {
+          continue;
         }
+        live.add(id);
+        let node = this.portalNodes.get(id);
+        if (!node) {
+          node = new PortalNode(portal);
+          this.portalNodes.set(id, node);
+        }
+        refresh.push(node);
       }
     }
 
-    for (const [id] of this.portalNodes) {
-      if (!live.has(id)) {
+    for (const [id, node] of this.portalNodes) {
+      if (!live.has(id) && touched(node)) {
         this.portalNodes.delete(id);
       }
     }
 
-    for (const [, node] of this.portalNodes) {
+    for (const node of refresh) {
       node.initExits(this.portalNodes);
     }
+    this.portalGraphBuilt = true;
   }
 
   /**
@@ -272,6 +305,7 @@ export class Grid {
     for (const [, node] of this.portalNodes) {
       node.initExits(this.portalNodes);
     }
+    this.portalGraphBuilt = true;
   }
 
   getPortalMap(): Map<PortalId, PortalNode> {
@@ -306,10 +340,13 @@ export class Grid {
   /**
    * Change cell costs at global tile coordinates (e.g. a unit stopping on a
    * tile, a tree being cut) and bring the portal graph up to date: portals
-   * of the touched sectors are rebuilt, exits flood-filled fresh, and
-   * cached fields of the changed cost fields are invalidated by their
-   * version. Cells outside the grid are ignored. Returns the sectors whose
-   * portals changed.
+   * of the touched sectors are rebuilt, exits flood-filled fresh, the
+   * portal nodes of the changed sectors refreshed, and cached fields of the
+   * changed cost fields are invalidated by their version. Cells outside the
+   * grid are ignored. Returns the sectors whose portals changed.
+   *
+   * Every call costs a rebuild of the touched sectors' portals; pass the
+   * changes that happen together in one call.
    */
   updateCosts(
     changes: readonly { readonly ne: number, readonly se: number, readonly cost: number }[],
@@ -328,9 +365,7 @@ export class Grid {
       }
     }
     const changed = this.rebuildPortals([...dirty]);
-    if (dirty.size > 0) {
-      this.rebuildPortalNodes();
-    }
+    this.rebuildPortalNodes(changed);
     return changed;
   }
 

@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Grid } from '../src/lib/graph/grid.js';
 import { Pathfinder } from '../src/lib/pathfinding/pathfinder.js';
+import { PortalNode } from '../src/lib/pathfinding/portal-graph.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { buildGrid } from '../src/shared/cost-map/cost-map.js';
 import { PathResult, type Waypoint } from '../src/shared/types.js';
-import { followRoute, makeRandom } from './helpers.js';
+import { followRoute, freshPortalGraphOf, makeRandom, portalGraphOf } from './helpers.js';
 
 const SECTOR = 8;
 const SIZE = SECTOR * 2;
@@ -85,6 +86,55 @@ describe('Grid.updateCosts', () => {
 
     grid.updateCosts(wall.map(c => ({ ...c, cost: COST_MIN })));
     expect(pf.getPath(request).result).toBe(PathResult.FOUND);
+  });
+
+  it('refreshes only the portal nodes of the sectors whose portals changed', () => {
+    const sectors = 4;
+    const cells = SECTOR * sectors;
+    const grid = buildGrid(
+      new Uint8Array(cells * cells).fill(COST_MIN),
+      { width: cells, height: cells },
+      SECTOR,
+      0,
+    );
+    const initExits = vi.spyOn(PortalNode.prototype, 'initExits');
+    // a unit stops inside sector (1, 1), away from its borders
+    const changed = grid.updateCosts([{ ne: SECTOR + 3, se: SECTOR + 3, cost: COST_IMPASSABLE }]);
+    const refreshed = initExits.mock.contexts.map(node => (node as PortalNode).portal);
+    initExits.mockRestore();
+
+    expect(changed).toEqual(new Set([1 + sectors]));
+    const portals = grid.getSector(1 + sectors)!.getPortals();
+    expect(portals).toHaveLength(4);
+    expect(refreshed).toHaveLength(portals.length);
+    expect(new Set(refreshed)).toEqual(new Set(portals));
+    expect(portalGraphOf(grid.getPortalMap())).toEqual(freshPortalGraphOf(grid));
+  });
+
+  it('builds the whole portal graph on the first update of a grid that has none', () => {
+    const size = 3 * SECTOR;
+    const source = buildGrid(
+      new Uint8Array(size * size).fill(COST_MIN),
+      { width: size, height: size },
+      SECTOR,
+      0,
+    );
+    // sectors with portals, but the new grid never ran initPortalNodes()
+    const grid = new Grid(1, { width: 3, height: 3 }, source.getSectors());
+    const pf = new Pathfinder();
+    pf.addGrid(grid);
+
+    // a change in the top left sector; the other sectors need their nodes too
+    grid.updateCosts([{ ne: 3, se: 3, cost: COST_IMPASSABLE }]);
+    expect(portalGraphOf(grid.getPortalMap())).toEqual(freshPortalGraphOf(grid));
+    expect(pf.getFlowRoute({ gridId: 1, start: { ne: 20, se: 1 }, target: { ne: 20, se: 22 } })).not.toBeNull();
+
+    // from then on, only the changed sectors are refreshed
+    const initExits = vi.spyOn(PortalNode.prototype, 'initExits');
+    grid.updateCosts([{ ne: 3, se: 3, cost: COST_MIN }]);
+    const refreshed = initExits.mock.calls.length;
+    initExits.mockRestore();
+    expect(refreshed).toBe(grid.getSector(0)!.getPortals().length);
   });
 
   it('ignores unchanged and out-of-grid cells', () => {
@@ -168,6 +218,8 @@ describe('Grid.updateCosts', () => {
       const portals = new Set(grid.getSectors().flatMap(s => s.getPortals()));
       expect(new Set(ids).size, `step ${step}`).toBe(portals.size);
       expect(grid.getPortalMap().size, `step ${step}`).toBe(portals.size);
+      // Only the changed sectors' nodes were refreshed; the rest must still be right.
+      expect(portalGraphOf(grid.getPortalMap()), `step ${step}`).toEqual(freshPortalGraphOf(grid));
 
       const fresh = new Pathfinder();
       fresh.addGrid(buildGrid(costs, { width: cells, height: cells }, SECTOR, 0));

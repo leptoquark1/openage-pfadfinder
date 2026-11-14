@@ -1,10 +1,48 @@
 import { describe, expect, it } from 'vitest';
 import { CostField } from '../src/lib/core/cost-field.js';
 import { Grid } from '../src/lib/graph/grid.js';
+import type { Portal } from '../src/lib/graph/portal.js';
 import { Sector } from '../src/lib/graph/sector.js';
 import { Pathfinder } from '../src/lib/pathfinding/pathfinder.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
+import { buildGrid } from '../src/shared/cost-map/cost-map.js';
 import { PathResult } from '../src/shared/types.js';
+import { makeRandom } from './helpers.js';
+
+/** Passable entry cells of `portal` on `sector`'s side, as `ne,se` keys. */
+function entryCells(sector: Sector, portal: Portal): string[] {
+  const field = sector.getCostField();
+  const start = portal.getEntryStart(sector.getId());
+  const end = portal.getEntryEnd(sector.getId());
+  const cells: string[] = [];
+  for (let se = start.se; se <= end.se; se++) {
+    for (let ne = start.ne; ne <= end.ne; ne++) {
+      if (field.getCost(ne, se) !== COST_IMPASSABLE) {
+        cells.push(`${ne},${se}`);
+      }
+    }
+  }
+  return cells;
+}
+
+/** The sector's other portals a flood fill from `portal`'s entry cells reaches, in the sector's order. */
+function reachableExits(sector: Sector, portal: Portal): Portal[] {
+  const field = sector.getCostField();
+  const size = field.getSize();
+  const seen = new Set(entryCells(sector, portal));
+  const open = [...seen];
+  while (open.length > 0) {
+    const [ne, se] = open.pop()!.split(',').map(Number) as [number, number];
+    for (const [n, s] of [[ne, se - 1], [ne - 1, se], [ne, se + 1], [ne + 1, se]] as const) {
+      const key = `${n},${s}`;
+      if (n >= 0 && s >= 0 && n < size && s < size && !seen.has(key) && field.getCost(n, s) !== COST_IMPASSABLE) {
+        seen.add(key);
+        open.push(key);
+      }
+    }
+  }
+  return sector.getPortals().filter(p => p !== portal && entryCells(sector, p).some(c => seen.has(c)));
+}
 
 describe('Sector.connectExits flood-fill connectivity', () => {
   it('does not connect portals separated by a wall', () => {
@@ -63,5 +101,27 @@ describe('Sector.connectExits flood-fill connectivity', () => {
       target: { ne: 1, se: 4 },
     });
     expect(path.result).toBe(PathResult.FOUND);
+  });
+
+  it('connects exactly the portals a flood fill from each portal reaches', () => {
+    const sectorSize = 8;
+    const cells = 3 * sectorSize;
+    const rand = makeRandom(77);
+    let checked = 0;
+    for (let map = 0; map < 40; map++) {
+      // from open land to sectors cut into many small areas
+      const density = 0.05 + (map % 10) * 0.05;
+      const costs = new Uint8Array(cells * cells).map(() => (rand() < density ? COST_IMPASSABLE : COST_MIN));
+      const grid = buildGrid(costs, { width: cells, height: cells }, sectorSize, 0);
+      for (const sector of grid.getSectors()) {
+        for (const portal of sector.getPortals()) {
+          expect(portal.getConnected(sector.getId()), `map ${map} portal ${portal.getId()}`).toEqual(
+            reachableExits(sector, portal),
+          );
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(500);
   });
 });
