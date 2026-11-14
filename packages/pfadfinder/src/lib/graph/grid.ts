@@ -19,6 +19,12 @@ export class Grid {
   private readonly sectorSize: number;
   private readonly sectors: Sector[] = [];
   private portalNodes: Map<PortalId, PortalNode> = new Map();
+  /**
+   * Whether the portal graph was built for every portal (`initPortalNodes()`
+   * or a full `rebuildPortalNodes()`); until then, a rebuild limited to some
+   * sectors would leave the nodes of all others missing.
+   */
+  private portalGraphBuilt = false;
   private nextPortalId: PortalId = 0;
   /** The single source of new portal ids for initPortals and rebuildPortals. */
   private readonly allocatePortalId = (): PortalId => this.nextPortalId++;
@@ -184,20 +190,22 @@ export class Grid {
    *
    * Pass the sectors `rebuildPortals()` returned to refresh only the nodes
    * of their portals: a node's exits lie in its portal's two sectors, so
-   * nodes of other portals stay as they are. Without them, every node is
+   * nodes of other portals stay as they are. Without them, or while the
+   * portal graph was never built (no `initPortalNodes()`), every node is
    * refreshed.
    */
   rebuildPortalNodes(changedSectors?: ReadonlySet<SectorId>): void {
     if (changedSectors?.size === 0) {
       return;
     }
-    const sectors = changedSectors ? [...changedSectors].map(id => this.getSector(id)) : this.sectors;
+    const only = this.portalGraphBuilt ? changedSectors : undefined;
+    const sectors = only ? [...only].map(id => this.getSector(id)) : this.sectors;
     // A dropped portal was removed from both its sectors, and
     // rebuildPortals() reports both as changed.
     const touched = (node: PortalNode): boolean =>
-      !changedSectors
-      || changedSectors.has(node.portal.getSector0())
-      || changedSectors.has(node.portal.getSector1());
+      !only
+      || only.has(node.portal.getSector0())
+      || only.has(node.portal.getSector1());
 
     const live = new Set<PortalId>();
     const refresh: PortalNode[] = [];
@@ -226,6 +234,7 @@ export class Grid {
     for (const node of refresh) {
       node.initExits(this.portalNodes);
     }
+    this.portalGraphBuilt = true;
   }
 
   /**
@@ -296,6 +305,7 @@ export class Grid {
     for (const [, node] of this.portalNodes) {
       node.initExits(this.portalNodes);
     }
+    this.portalGraphBuilt = true;
   }
 
   getPortalMap(): Map<PortalId, PortalNode> {

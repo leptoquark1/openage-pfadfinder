@@ -111,6 +111,32 @@ describe('Grid.updateCosts', () => {
     expect(portalGraphOf(grid.getPortalMap())).toEqual(freshPortalGraphOf(grid));
   });
 
+  it('builds the whole portal graph on the first update of a grid that has none', () => {
+    const size = 3 * SECTOR;
+    const source = buildGrid(
+      new Uint8Array(size * size).fill(COST_MIN),
+      { width: size, height: size },
+      SECTOR,
+      0,
+    );
+    // sectors with portals, but the new grid never ran initPortalNodes()
+    const grid = new Grid(1, { width: 3, height: 3 }, source.getSectors());
+    const pf = new Pathfinder();
+    pf.addGrid(grid);
+
+    // a change in the top left sector; the other sectors need their nodes too
+    grid.updateCosts([{ ne: 3, se: 3, cost: COST_IMPASSABLE }]);
+    expect(portalGraphOf(grid.getPortalMap())).toEqual(freshPortalGraphOf(grid));
+    expect(pf.getFlowRoute({ gridId: 1, start: { ne: 20, se: 1 }, target: { ne: 20, se: 22 } })).not.toBeNull();
+
+    // from then on, only the changed sectors are refreshed
+    const initExits = vi.spyOn(PortalNode.prototype, 'initExits');
+    grid.updateCosts([{ ne: 3, se: 3, cost: COST_MIN }]);
+    const refreshed = initExits.mock.calls.length;
+    initExits.mockRestore();
+    expect(refreshed).toBe(grid.getSector(0)!.getPortals().length);
+  });
+
   it('ignores unchanged and out-of-grid cells', () => {
     const { grid } = setup();
     expect(
