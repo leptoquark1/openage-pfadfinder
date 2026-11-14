@@ -5,7 +5,7 @@ import { PortalNode } from '../src/lib/pathfinding/portal-graph.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { buildGrid } from '../src/shared/cost-map/cost-map.js';
 import { PathResult, type Waypoint } from '../src/shared/types.js';
-import { followRoute, freshPortalGraphOf, makeRandom, portalGraphOf } from './helpers.js';
+import { followRoute, freshPortalGraphOf, makeRandom, portalGraphOf, portalLayoutOf } from './helpers.js';
 
 const SECTOR = 8;
 const SIZE = SECTOR * 2;
@@ -207,8 +207,12 @@ describe('Grid.updateCosts', () => {
       // Only the changed sectors' nodes were refreshed; the rest must still be right.
       expect(portalGraphOf(grid.getPortalMap()), `step ${step}`).toEqual(freshPortalGraphOf(grid));
 
+      const freshGrid = buildGrid(costs, { width: cells, height: cells }, SECTOR, 0);
+      // Same portals in the same order: routes must not depend on the edits that led here.
+      expect(portalLayoutOf(grid), `step ${step}`).toEqual(portalLayoutOf(freshGrid));
+
       const fresh = new Pathfinder();
-      fresh.addGrid(buildGrid(costs, { width: cells, height: cells }, SECTOR, 0));
+      fresh.addGrid(freshGrid);
       for (let k = 0; k < 4; k++) {
         const request = {
           gridId: 0,
@@ -218,6 +222,7 @@ describe('Grid.updateCosts', () => {
         const label = `step ${step} ${JSON.stringify(request)}`;
         const route = pf.getFlowRoute(request);
         expect(route !== null, label).toBe(fresh.getFlowRoute(request) !== null);
+        expect(pf.getPath(request), label).toEqual(fresh.getPath(request));
         // A start on a wall has nowhere to walk from.
         if (!route || costs[request.start.ne + request.start.se * cells] === COST_IMPASSABLE) {
           continue;
