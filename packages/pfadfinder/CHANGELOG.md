@@ -1,5 +1,15 @@
 # @leptoquark1/openage-pfadfinder
 
+## 1.2.0
+
+### Minor Changes
+
+- 53a740d: `Grid.updateCosts()` is up to about four times faster on large grids: it no longer recomputes the exits of every portal node, only those of the sectors whose portals changed (e.g. 2.4 ms → 0.6 ms per call on a 240×240 grid). `Grid.rebuildPortalNodes()` takes the sectors `rebuildPortals()` returned to do the same; without them it refreshes all nodes as before, and so does the first update of a grid that never built its portal graph (no `initPortalNodes()`). Routes stay exactly the same.
+
+### Patch Changes
+
+- 959d762: `Sector.connectExits()` floods the sector's areas of passable cells once instead of once per portal, and two portals connect when their entry cells share an area. Rebuilding one sector's portals (`Grid.rebuildPortals()`, `updateCosts()`) takes about 0.01 ms instead of 0.6 ms for a 16×16 sector, and `buildGrid()` builds a 240×240 grid in about 3 ms instead of 97 ms. The exits found stay the same.
+
 ## 1.1.0
 
 ### Minor Changes
