@@ -46,11 +46,9 @@ export class CostField {
   setCost(a: number | TileDelta, b: number, c?: number): void {
     if (typeof a === 'object') {
       this.cells[tileToIndex(a, this.size)] = b;
-    }
-    else if (c !== undefined) {
+    } else if (c !== undefined) {
       this.cells[xyToIndex(a, b, this.size)] = c;
-    }
-    else {
+    } else {
       this.cells[a] = b;
     }
     this.version++;

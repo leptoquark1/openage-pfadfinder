@@ -2,20 +2,28 @@ import { TriangleAlert } from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
 
 interface ConfirmDialogProps {
-  open: boolean
-  title: string
-  children: ReactNode
-  confirmLabel: string
-  cancelLabel?: string
-  onConfirm: () => void
-  onCancel: () => void
+  open: boolean;
+  title: string;
+  children: ReactNode;
+  confirmLabel: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
 }
 
 /**
  * Modal confirmation built on the native <dialog>: showModal() traps focus
  * and makes the page behind it inert; Esc fires `cancel`.
  */
-export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel = 'Cancel', onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({
+  open,
+  title,
+  children,
+  confirmLabel,
+  cancelLabel = 'Cancel',
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -25,20 +33,20 @@ export function ConfirmDialog({ open, title, children, confirmLabel, cancelLabel
     }
     if (open && !dialog.open) {
       dialog.showModal();
-    }
-    else if (!open && dialog.open) {
+    } else if (!open && dialog.open) {
       dialog.close();
     }
   }, [open]);
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click only; Escape is handled natively via onCancel
     <dialog
       ref={ref}
-      onCancel={(e) => {
+      onCancel={e => {
         e.preventDefault();
         onCancel();
       }}
-      onClick={(e) => {
+      onClick={e => {
         // A click on the backdrop lands on the <dialog> element itself.
         if (e.target === e.currentTarget) {
           onCancel();

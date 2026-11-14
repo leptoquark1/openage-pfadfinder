@@ -93,8 +93,7 @@ export class FlowField {
           const cost = integrateCosts[idx - size]!;
           if (cost === INTEGRATED_COST_UNREACHABLE) {
             directionsUnreachable |= 0x01;
-          }
-          else if (cost < smallestCost) {
+          } else if (cost < smallestCost) {
             smallestCost = cost;
             direction = FlowDir.NORTH;
           }
@@ -103,8 +102,7 @@ export class FlowField {
           const cost = integrateCosts[idx + 1]!;
           if (cost === INTEGRATED_COST_UNREACHABLE) {
             directionsUnreachable |= 0x02;
-          }
-          else if (cost < smallestCost) {
+          } else if (cost < smallestCost) {
             smallestCost = cost;
             direction = FlowDir.EAST;
           }
@@ -113,8 +111,7 @@ export class FlowField {
           const cost = integrateCosts[idx + size]!;
           if (cost === INTEGRATED_COST_UNREACHABLE) {
             directionsUnreachable |= 0x04;
-          }
-          else if (cost < smallestCost) {
+          } else if (cost < smallestCost) {
             smallestCost = cost;
             direction = FlowDir.SOUTH;
           }
@@ -123,44 +120,28 @@ export class FlowField {
           const cost = integrateCosts[idx - 1]!;
           if (cost === INTEGRATED_COST_UNREACHABLE) {
             directionsUnreachable |= 0x08;
-          }
-          else if (cost < smallestCost) {
+          } else if (cost < smallestCost) {
             smallestCost = cost;
             direction = FlowDir.WEST;
           }
         }
 
         // Diagonal directions (only if both adjacent cardinals are passable)
-        if (
-          x < size - 1
-          && y > 0
-          && !(directionsUnreachable & 0x01)
-          && !(directionsUnreachable & 0x02)
-        ) {
+        if (x < size - 1 && y > 0 && !(directionsUnreachable & 0x01) && !(directionsUnreachable & 0x02)) {
           const cost = integrateCosts[idx - size + 1]!;
           if (cost < smallestCost) {
             smallestCost = cost;
             direction = FlowDir.NORTH_EAST;
           }
         }
-        if (
-          x < size - 1
-          && y < size - 1
-          && !(directionsUnreachable & 0x02)
-          && !(directionsUnreachable & 0x04)
-        ) {
+        if (x < size - 1 && y < size - 1 && !(directionsUnreachable & 0x02) && !(directionsUnreachable & 0x04)) {
           const cost = integrateCosts[idx + size + 1]!;
           if (cost < smallestCost) {
             smallestCost = cost;
             direction = FlowDir.SOUTH_EAST;
           }
         }
-        if (
-          x > 0
-          && y < size - 1
-          && !(directionsUnreachable & 0x04)
-          && !(directionsUnreachable & 0x08)
-        ) {
+        if (x > 0 && y < size - 1 && !(directionsUnreachable & 0x04) && !(directionsUnreachable & 0x08)) {
           const cost = integrateCosts[idx + size - 1]!;
           if (cost < smallestCost) {
             smallestCost = cost;
@@ -205,8 +186,7 @@ export class FlowField {
         this.cells[idx] = setFlag(this.cells[idx]!, FLOW_PATHABLE_MASK);
         this.cells[idx] = (this.cells[idx]! & ~FLOW_DIR_MASK) | flowDir;
       }
-    }
-    else if (direction === PortalDirection.EAST_WEST) {
+    } else if (direction === PortalDirection.EAST_WEST) {
       const otherIsEast = entryStart.ne < exitStart.ne;
       const flowDir = otherIsEast ? FlowDir.EAST : FlowDir.WEST;
       const x = exitStart.ne;

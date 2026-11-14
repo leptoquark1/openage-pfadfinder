@@ -1,9 +1,9 @@
 import { MODES, type Mode } from '../theme.js';
 
 interface StatusBadgeProps {
-  mode: Mode
+  mode: Mode;
   /** Secondary line, e.g. a hint that mobs are stuck. Hidden when empty. */
-  status: string
+  status: string;
 }
 
 export function StatusBadge({ mode, status }: StatusBadgeProps) {
@@ -14,9 +14,7 @@ export function StatusBadge({ mode, status }: StatusBadgeProps) {
       aria-live="polite"
     >
       <div>
-        Mode:
-        {' '}
-        <span className="text-fg">{current?.label}</span>
+        Mode: <span className="text-fg">{current?.label}</span>
       </div>
       {status && <div className="mt-1 text-[11px] text-obstacle">{status}</div>}
     </div>

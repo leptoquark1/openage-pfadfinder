@@ -8,12 +8,7 @@ import type { TileDelta } from '../../shared/types.js';
  *
  * Port of openage's IntegrationField::bresenhams_line().
  */
-export function bresenhamLine(
-  target: TileDelta,
-  cornerX: number,
-  cornerY: number,
-  size: number,
-): number[] {
+export function bresenhamLine(target: TileDelta, cornerX: number, cornerY: number, size: number): number[] {
   const cells: number[] = [];
 
   let cellX = cornerX;
@@ -41,14 +36,12 @@ export function bresenhamLine(
         if (error > 1.0) {
           cellY -= 1;
           error -= 1.0;
-        }
-        else {
+        } else {
           cellX -= 1;
           error += m;
         }
       }
-    }
-    else {
+    } else {
       // left and down
       cellX -= 1;
       while (cellX >= 0 && cellY < boundary) {
@@ -56,15 +49,13 @@ export function bresenhamLine(
         if (error > 1.0) {
           cellY += 1;
           error -= 1.0;
-        }
-        else {
+        } else {
           cellX -= 1;
           error += m;
         }
       }
     }
-  }
-  else {
+  } else {
     if (cornerY < ty) {
       // right and up
       cellY -= 1;
@@ -73,22 +64,19 @@ export function bresenhamLine(
         if (error > 1.0) {
           cellY -= 1;
           error -= 1.0;
-        }
-        else {
+        } else {
           cellX += 1;
           error += m;
         }
       }
-    }
-    else {
+    } else {
       // right and down
       while (cellX < boundary && cellY < boundary) {
         cells.push(cellX + cellY * size);
         if (error > 1.0) {
           cellY += 1;
           error -= 1.0;
-        }
-        else {
+        } else {
           cellX += 1;
           error += m;
         }

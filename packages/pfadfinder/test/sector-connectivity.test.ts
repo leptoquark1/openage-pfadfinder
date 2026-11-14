@@ -33,7 +33,12 @@ function reachableExits(sector: Sector, portal: Portal): Portal[] {
   const open = [...seen];
   while (open.length > 0) {
     const [ne, se] = open.pop()!.split(',').map(Number) as [number, number];
-    for (const [n, s] of [[ne, se - 1], [ne - 1, se], [ne, se + 1], [ne + 1, se]] as const) {
+    for (const [n, s] of [
+      [ne, se - 1],
+      [ne - 1, se],
+      [ne, se + 1],
+      [ne + 1, se],
+    ] as const) {
       const key = `${n},${s}`;
       if (n >= 0 && s >= 0 && n < size && s < size && !seen.has(key) && field.getCost(n, s) !== COST_IMPASSABLE) {
         seen.add(key);

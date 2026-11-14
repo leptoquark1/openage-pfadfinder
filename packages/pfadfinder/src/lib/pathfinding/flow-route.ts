@@ -1,10 +1,5 @@
 import { hasFlag } from '../../shared/bit-ops.js';
-import {
-  COST_IMPASSABLE,
-  FLOW_LOS_MASK,
-  FLOW_PATHABLE_MASK,
-  FLOW_TARGET_MASK,
-} from '../../shared/constants.js';
+import { COST_IMPASSABLE, FLOW_LOS_MASK, FLOW_PATHABLE_MASK, FLOW_TARGET_MASK } from '../../shared/constants.js';
 import { xyToIndex } from '../../shared/coordinates.js';
 import type { FlowDir, Path, SectorId, TileDelta, Waypoint } from '../../shared/types.js';
 import type { FlowField } from '../core/flow-field.js';
@@ -14,8 +9,8 @@ import { pathFound, pathNotFound } from './path-result.js';
 
 /** One sector of a route and the flow field that leads through it. */
 export interface FlowStep {
-  readonly sector: Sector
-  readonly flowField: FlowField
+  readonly sector: Sector;
+  readonly flowField: FlowField;
 }
 
 /**
@@ -75,9 +70,9 @@ export class FlowRoute {
     for (const step of (sector && this.stepsOfSector.get(sector.getId())) ?? []) {
       const cell = this.cellAt(step, ne, se);
       if (
-        this.isLastStep(step)
-        && hasFlag(cell, FLOW_LOS_MASK)
-        && isLineWalkable(this.grid, ne, se, this.target.ne, this.target.se)
+        this.isLastStep(step) &&
+        hasFlag(cell, FLOW_LOS_MASK) &&
+        isLineWalkable(this.grid, ne, se, this.target.ne, this.target.se)
       ) {
         return { ne: this.target.ne, se: this.target.se };
       }
@@ -121,9 +116,9 @@ export class FlowRoute {
       // The LOS flags come from corner shadowcasting, which can graze an
       // obstacle corner; only shortcut when the straight line is clear.
       if (
-        this.isLastStep(step)
-        && hasFlag(cell, FLOW_LOS_MASK)
-        && isLineWalkable(this.grid, ne, se, target.ne, target.se)
+        this.isLastStep(step) &&
+        hasFlag(cell, FLOW_LOS_MASK) &&
+        isLineWalkable(this.grid, ne, se, target.ne, target.se)
       ) {
         pushWaypoint(waypoints, ne, se);
         pushWaypoint(waypoints, target.ne, target.se);
@@ -165,10 +160,7 @@ export class FlowRoute {
 
   /** Portal cells are integration targets too, but carry a fixed direction out of the sector; only the goal cell has none. */
   private isPathable(step: number, cell: number): boolean {
-    return (
-      hasFlag(cell, FLOW_PATHABLE_MASK)
-      && !(this.isLastStep(step) && hasFlag(cell, FLOW_TARGET_MASK))
-    );
+    return hasFlag(cell, FLOW_PATHABLE_MASK) && !(this.isLastStep(step) && hasFlag(cell, FLOW_TARGET_MASK));
   }
 
   private cellAt(step: number, ne: number, se: number): number {
@@ -191,13 +183,7 @@ export class FlowRoute {
  * passable cells (grid traversal; touching a corner counts as crossing
  * both cells next to it).
  */
-export function isLineWalkable(
-  grid: Grid,
-  fromNe: number,
-  fromSe: number,
-  toNe: number,
-  toSe: number,
-): boolean {
+export function isLineWalkable(grid: Grid, fromNe: number, fromSe: number, toNe: number, toSe: number): boolean {
   const dNe = toNe - fromNe;
   const dSe = toSe - fromSe;
   const stepNe = Math.sign(dNe);
@@ -219,12 +205,10 @@ export function isLineWalkable(
       se += stepSe;
       tMaxNe += tDeltaNe;
       tMaxSe += tDeltaSe;
-    }
-    else if (tMaxNe < tMaxSe) {
+    } else if (tMaxNe < tMaxSe) {
       ne += stepNe;
       tMaxNe += tDeltaNe;
-    }
-    else {
+    } else {
       se += stepSe;
       tMaxSe += tDeltaSe;
     }

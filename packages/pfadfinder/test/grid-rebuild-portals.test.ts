@@ -155,7 +155,12 @@ describe('Grid.rebuildPortals incremental update', () => {
     sector0.getCostField().setCost(size - 1, 2, COST_IMPASSABLE);
     grid.rebuildPortals([sector0]);
     grid.rebuildPortalNodes();
-    expect(sector0.getPortals().map(p => p.getId()).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    expect(
+      sector0
+        .getPortals()
+        .map(p => p.getId())
+        .sort((a, b) => a - b),
+    ).toEqual([1, 2, 3]);
   });
 
   it('syncs only the nodes of the sectors it is given', () => {

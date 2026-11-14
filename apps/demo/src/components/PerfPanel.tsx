@@ -4,7 +4,7 @@ import { EMPTY_SNAPSHOT, type PerfEntry, type PerfSnapshot } from '../world/perf
 import type { World } from '../world/world.js';
 
 interface PerfPanelProps {
-  world: World
+  world: World;
 }
 
 /** Refresh rate of the panel — fast enough to feel live, slow enough to read. */
@@ -17,7 +17,7 @@ const BUDGET_MS = 1000 / 60;
  * Phases in display order. `indent` marks the parts `Sim` is made of, so the
  * panel shows where the simulation time goes instead of a flat list.
  */
-const PHASES: { readonly name: string, readonly indent: boolean }[] = [
+const PHASES: { readonly name: string; readonly indent: boolean }[] = [
   { name: 'Sim', indent: false },
   { name: 'Grid', indent: true },
   { name: 'Flow', indent: true },
@@ -71,14 +71,7 @@ export function PerfPanel({ world }: PerfPanelProps) {
           <span className="ml-1 text-[11px]">fps</span>
         </span>
         <span>
-          {format(snapshot.frame.avg)}
-          {' '}
-          <span className="text-[10px]">avg</span>
-          {' '}
-          /
-          {' '}
-          {format(snapshot.frame.max)}
-          {' '}
+          {format(snapshot.frame.avg)} <span className="text-[10px]">avg</span> / {format(snapshot.frame.max)}{' '}
           <span className="text-[10px]">max</span>
         </span>
       </div>
@@ -108,13 +101,16 @@ export function PerfPanel({ world }: PerfPanelProps) {
  * One phase: its average cost, a bar relative to the frame budget, and how
  * often it ran per second when that is not once per frame.
  */
-function PhaseRow({ label, entry, indent }: { label: string, entry: PerfEntry, indent: boolean }) {
+function PhaseRow({ label, entry, indent }: { label: string; entry: PerfEntry; indent: boolean }) {
   const share = Math.min(entry.avg / BUDGET_MS, 1);
   return (
     <div className="flex items-center gap-1.5">
       <span className={`w-16 truncate ${indent ? 'pl-2 text-[10px]' : ''}`}>{label}</span>
       <span className="h-1 flex-1 rounded-full bg-border">
-        <span className="block h-full rounded-full" style={{ width: `${share * 100}%`, background: budgetColor(entry.avg) }} />
+        <span
+          className="block h-full rounded-full"
+          style={{ width: `${share * 100}%`, background: budgetColor(entry.avg) }}
+        />
       </span>
       <span className="w-11 text-right text-fg">{format(entry.avg)}</span>
       <span className="w-8 text-right text-[10px]">
@@ -137,13 +133,33 @@ function Sparkline({ values }: { values: readonly number[] }) {
   const step = 120 / values.length;
 
   return (
-    <svg className="mt-1.5 h-7 w-full" viewBox="0 0 120 28" preserveAspectRatio="none" role="img" aria-label="Frame-Zeiten der letzten Sekunden">
-      <line x1="0" y1={28 - (BUDGET_MS / scale) * 28} x2="120" y2={28 - (BUDGET_MS / scale) * 28} stroke={COLORS.border} strokeWidth="0.5" />
+    <svg
+      className="mt-1.5 h-7 w-full"
+      viewBox="0 0 120 28"
+      preserveAspectRatio="none"
+      role="img"
+      aria-label="Frame-Zeiten der letzten Sekunden"
+    >
+      <line
+        x1="0"
+        y1={28 - (BUDGET_MS / scale) * 28}
+        x2="120"
+        y2={28 - (BUDGET_MS / scale) * 28}
+        stroke={COLORS.border}
+        strokeWidth="0.5"
+      />
       {values.map((value, i) => {
         const height = Math.max((value / scale) * 28, 0.5);
         return (
-        // biome-ignore lint/suspicious/noArrayIndexKey: samples are a positional ring buffer, not identities
-          <rect key={i} x={i * step} y={28 - height} width={Math.max(step - 0.3, 0.4)} height={height} fill={budgetColor(value)} />
+          <rect
+            // biome-ignore lint/suspicious/noArrayIndexKey: samples are a positional ring buffer, not identities
+            key={i}
+            x={i * step}
+            y={28 - height}
+            width={Math.max(step - 0.3, 0.4)}
+            height={height}
+            fill={budgetColor(value)}
+          />
         );
       })}
     </svg>

@@ -63,23 +63,23 @@ class Series {
 
 /** Statistics of one measured phase, all times in milliseconds. */
 export interface PerfEntry {
-  readonly last: number
-  readonly avg: number
-  readonly max: number
+  readonly last: number;
+  readonly avg: number;
+  readonly max: number;
   /** How often the phase ran in the last second — separates per-frame from per-tick work. */
-  readonly callsPerSecond: number
+  readonly callsPerSecond: number;
 }
 
 const EMPTY_ENTRY: PerfEntry = { last: 0, avg: 0, max: 0, callsPerSecond: 0 };
 
 export interface PerfSnapshot {
-  readonly fps: number
-  readonly frame: PerfEntry
+  readonly fps: number;
+  readonly frame: PerfEntry;
   /** Measured phases in insertion order, so the panel keeps a stable layout. */
-  readonly phases: readonly (readonly [string, PerfEntry])[]
-  readonly counters: readonly (readonly [string, number])[]
+  readonly phases: readonly (readonly [string, PerfEntry])[];
+  readonly counters: readonly (readonly [string, number])[];
   /** Frame times of the window, oldest first — the sparkline's data. */
-  readonly frameHistory: readonly number[]
+  readonly frameHistory: readonly number[];
 }
 
 export const EMPTY_SNAPSHOT: PerfSnapshot = {

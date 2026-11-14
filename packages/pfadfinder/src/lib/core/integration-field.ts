@@ -16,8 +16,8 @@ import { bresenhamLine } from '../internal/bresenham.js';
 import type { CostField } from './cost-field.js';
 
 interface LosCorner {
-  readonly x: number
-  readonly y: number
+  readonly x: number;
+  readonly y: number;
 }
 
 /**
@@ -76,8 +76,7 @@ export class IntegrationField {
   }
 
   resetDynamicFlags(): void {
-    const mask
-      = ~(INTEGRATE_LOS_MASK | INTEGRATE_WAVEFRONT_BLOCKED_MASK | INTEGRATE_FOUND_MASK) & 0xff;
+    const mask = ~(INTEGRATE_LOS_MASK | INTEGRATE_WAVEFRONT_BLOCKED_MASK | INTEGRATE_FOUND_MASK) & 0xff;
     for (let i = 0; i < this.flags.length; i++) {
       this.flags[i] = this.flags[i]! & mask;
     }
@@ -117,8 +116,7 @@ export class IntegrationField {
       }
 
       startCost += 1;
-    }
-    else {
+    } else {
       startCells.push(targetIdx);
     }
 
@@ -166,10 +164,7 @@ export class IntegrationField {
 
         const cellCost = costCells[targetIdx]!;
 
-        if (
-          cellCost > COST_MIN
-          || hasFlag(this.flags[targetIdx]!, INTEGRATE_WAVEFRONT_BLOCKED_MASK)
-        ) {
+        if (cellCost > COST_MIN || hasFlag(this.flags[targetIdx]!, INTEGRATE_WAVEFRONT_BLOCKED_MASK)) {
           this.flags[targetIdx] = setFlag(this.flags[targetIdx]!, INTEGRATE_WAVEFRONT_BLOCKED_MASK);
           wavefrontBlockedPortal.push(targetIdx);
           this.flags[targetIdx] = setFlag(this.flags[targetIdx]!, INTEGRATE_FOUND_MASK);
@@ -181,10 +176,7 @@ export class IntegrationField {
               if (costCells[blockedIdx]! > COST_MIN) {
                 break;
               }
-              this.flags[blockedIdx] = setFlag(
-                this.flags[blockedIdx]!,
-                INTEGRATE_WAVEFRONT_BLOCKED_MASK,
-              );
+              this.flags[blockedIdx] = setFlag(this.flags[blockedIdx]!, INTEGRATE_WAVEFRONT_BLOCKED_MASK);
               this.flags[blockedIdx] = clearFlag(this.flags[blockedIdx]!, INTEGRATE_LOS_MASK);
               wavefrontBlockedPortal.push(blockedIdx);
             }
@@ -200,12 +192,7 @@ export class IntegrationField {
       return wavefrontBlockedPortal;
     }
 
-    const wavefrontBlockedMain = this.integrateLosWave(
-      costField,
-      target,
-      INTEGRATED_COST_START,
-      startCells,
-    );
+    const wavefrontBlockedMain = this.integrateLosWave(costField, target, INTEGRATED_COST_START, startCells);
     return [...wavefrontBlockedMain, ...wavefrontBlockedPortal];
   }
 
@@ -213,12 +200,7 @@ export class IntegrationField {
    * Core LOS wavefront algorithm. Expands from start cells outward,
    * marking LOS cells and detecting wavefront-blocked cells via Bresenham.
    */
-  private integrateLosWave(
-    costField: CostField,
-    target: TileDelta,
-    startCost: number,
-    startWave: number[],
-  ): number[] {
+  private integrateLosWave(costField: CostField, target: TileDelta, startCost: number, startWave: number[]): number[] {
     const wavefrontBlocked: number[] = [];
     let currentWave = startWave;
     let nextWave: number[] = [];
@@ -233,13 +215,9 @@ export class IntegrationField {
 
         if (hasFlag(flags, INTEGRATE_FOUND_MASK)) {
           continue;
-        }
-        else if (hasFlag(flags, INTEGRATE_WAVEFRONT_BLOCKED_MASK)) {
+        } else if (hasFlag(flags, INTEGRATE_WAVEFRONT_BLOCKED_MASK)) {
           // Clamp: see updateNeighbor for the overflow rationale.
-          this.costs[idx] = Math.min(
-            waveCost - 1 + costCells[idx]!,
-            INTEGRATED_COST_UNREACHABLE - 1,
-          );
+          this.costs[idx] = Math.min(waveCost - 1 + costCells[idx]!, INTEGRATED_COST_UNREACHABLE - 1);
           this.flags[idx] = setFlag(flags, INTEGRATE_FOUND_MASK);
           continue;
         }
@@ -265,10 +243,7 @@ export class IntegrationField {
               if (costCells[blockedIdx]! > COST_MIN) {
                 break;
               }
-              this.flags[blockedIdx] = setFlag(
-                this.flags[blockedIdx]!,
-                INTEGRATE_WAVEFRONT_BLOCKED_MASK,
-              );
+              this.flags[blockedIdx] = setFlag(this.flags[blockedIdx]!, INTEGRATE_WAVEFRONT_BLOCKED_MASK);
               this.flags[blockedIdx] = clearFlag(this.flags[blockedIdx]!, INTEGRATE_LOS_MASK);
               wavefrontBlocked.push(blockedIdx);
             }
@@ -362,23 +337,13 @@ export class IntegrationField {
         const integratedCurrent = this.costs[idx]!;
 
         if (y > 0) {
-          this.updateNeighbor(
-            idx - this.size,
-            costCells[idx - this.size]!,
-            integratedCurrent,
-            nextWave,
-          );
+          this.updateNeighbor(idx - this.size, costCells[idx - this.size]!, integratedCurrent, nextWave);
         }
         if (x > 0) {
           this.updateNeighbor(idx - 1, costCells[idx - 1]!, integratedCurrent, nextWave);
         }
         if (y < this.size - 1) {
-          this.updateNeighbor(
-            idx + this.size,
-            costCells[idx + this.size]!,
-            integratedCurrent,
-            nextWave,
-          );
+          this.updateNeighbor(idx + this.size, costCells[idx + this.size]!, integratedCurrent, nextWave);
         }
         if (x < this.size - 1) {
           this.updateNeighbor(idx + 1, costCells[idx + 1]!, integratedCurrent, nextWave);
@@ -390,12 +355,7 @@ export class IntegrationField {
     }
   }
 
-  private updateNeighbor(
-    idx: number,
-    cellCost: number,
-    integratedCost: number,
-    wave: number[],
-  ): void {
+  private updateNeighbor(idx: number, cellCost: number, integratedCost: number, wave: number[]): void {
     if (cellCost === COST_IMPASSABLE) {
       return;
     }
@@ -450,8 +410,7 @@ export class IntegrationField {
         if (rightCost === COST_MIN) {
           corners.push(bottomRight);
         }
-      }
-      else {
+      } else {
         if (leftCost === COST_MIN) {
           corners.push(topLeft);
         }
@@ -459,8 +418,7 @@ export class IntegrationField {
           corners.push(topRight);
         }
       }
-    }
-    else if (blocker.se === target.se) {
+    } else if (blocker.se === target.se) {
       if (blocker.ne < target.ne) {
         if (topCost === COST_MIN) {
           corners.push(topRight);
@@ -468,8 +426,7 @@ export class IntegrationField {
         if (bottomCost === COST_MIN) {
           corners.push(bottomRight);
         }
-      }
-      else {
+      } else {
         if (topCost === COST_MIN) {
           corners.push(topLeft);
         }
@@ -477,8 +434,7 @@ export class IntegrationField {
           corners.push(bottomLeft);
         }
       }
-    }
-    else {
+    } else {
       if (blocker.ne < target.ne) {
         if (blocker.se < target.se) {
           if (topCost === COST_MIN && rightCost === COST_MIN) {
@@ -487,8 +443,7 @@ export class IntegrationField {
           if (leftCost === COST_MIN && bottomCost === COST_MIN) {
             corners.push(bottomLeft);
           }
-        }
-        else {
+        } else {
           if (bottomCost === COST_MIN && rightCost === COST_MIN) {
             corners.push(bottomRight);
           }
@@ -496,8 +451,7 @@ export class IntegrationField {
             corners.push(topLeft);
           }
         }
-      }
-      else {
+      } else {
         if (blocker.se < target.se) {
           if (topCost === COST_MIN && leftCost === COST_MIN) {
             corners.push(topLeft);
@@ -505,8 +459,7 @@ export class IntegrationField {
           if (rightCost === COST_MIN && bottomCost === COST_MIN) {
             corners.push(bottomRight);
           }
-        }
-        else {
+        } else {
           if (bottomCost === COST_MIN && leftCost === COST_MIN) {
             corners.push(bottomLeft);
           }

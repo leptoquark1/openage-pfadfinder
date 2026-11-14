@@ -52,14 +52,14 @@ const short = (dir: string) => {
 type Lib = typeof Shared;
 type Grid = ReturnType<Lib['buildGrid']>;
 /** `label` names the build in the output: a short path or `<package>@<version>`. */
-type Build = { name: string, dir: string, label: string, lib: Lib };
+type Build = { name: string; dir: string; label: string; lib: Lib };
 
 const load = async (name: string, dir: string, label = short(dir)): Promise<Build> => {
   const entry = resolve(dir, 'shared/index.js');
   if (!existsSync(entry)) {
     fail(`${name} build not found: ${entry} is missing (run \`pnpm build\` there)`);
   }
-  return { name, dir, label, lib: await import(pathToFileURL(entry).href) as Lib };
+  return { name, dir, label, lib: (await import(pathToFileURL(entry).href)) as Lib };
 };
 
 const PKG_NAME = (JSON.parse(readFileSync(resolve(PKG_DIR, 'package.json'), 'utf8')) as { name: string }).name;
@@ -67,23 +67,23 @@ const PKG_NAME = (JSON.parse(readFileSync(resolve(PKG_DIR, 'package.json'), 'utf
 const VERSION_RE = /^(?:latest|next|\d+\.\d+\.\d+(?:-[\w.]+)?)$/;
 
 /** Downloads a published version into a temp dir (removed on exit) and returns its dist dir. */
-const fetchRelease = (spec: string): { dir: string, label: string } => {
+const fetchRelease = (spec: string): { dir: string; label: string } => {
   const tmp = mkdtempSync(join(tmpdir(), 'pfadfinder-bench-'));
   process.on('exit', () => rmSync(tmp, { recursive: true, force: true }));
 
   try {
-    const exec = (cmd: string, cmdArgs: string[]) => execFileSync(cmd, cmdArgs, {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      // npm is a .cmd script on Windows.
-      shell: process.platform === 'win32',
-    });
+    const exec = (cmd: string, cmdArgs: string[]) =>
+      execFileSync(cmd, cmdArgs, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        // npm is a .cmd script on Windows.
+        shell: process.platform === 'win32',
+      });
     const packed = JSON.parse(exec('npm', ['pack', `${PKG_NAME}@${spec}`, '--json', '--pack-destination', tmp]));
-    const { filename, version } = (packed as { filename: string, version: string }[])[0]!;
+    const { filename, version } = (packed as { filename: string; version: string }[])[0]!;
     exec('tar', ['-xzf', join(tmp, filename), '-C', tmp]);
     return { dir: join(tmp, 'package', 'dist'), label: `${PKG_NAME}@${version}` };
-  }
-  catch (error) {
+  } catch (error) {
     const detail = (error as { stderr?: string }).stderr?.trim() || String(error);
     return fail(`Then version "${spec}" could not be fetched from npm:\n${detail}`);
   }
@@ -113,9 +113,8 @@ const docsTemplate = (() => {
 })();
 
 const nowDir = toDist(PKG_DIR);
-const release = thenArg !== undefined && !existsSync(thenArg) && VERSION_RE.test(thenArg)
-  ? fetchRelease(thenArg)
-  : undefined;
+const release =
+  thenArg !== undefined && !existsSync(thenArg) && VERSION_RE.test(thenArg) ? fetchRelease(thenArg) : undefined;
 const thenDir = release?.dir ?? (thenArg === undefined ? undefined : toDist(thenArg));
 
 const now = await load('Now', nowDir);
@@ -125,12 +124,10 @@ const builds = then ? [then, now] : [now];
 // Keep stdout pure JSON with `--json`.
 const log = IS_SILENT ? () => {} : IS_OUTPUT_JSON ? console.error : console.log;
 
-log(then
-  ? `Benchmark (Now: ${now.label} vs. Then: ${then.label})`
-  : `Benchmark (${now.label})`);
+log(then ? `Benchmark (Now: ${now.label} vs. Then: ${then.label})` : `Benchmark (${now.label})`);
 log();
 
-const ERR_COLOR = process.stderr.isTTY && !process.env['NO_COLOR'];
+const ERR_COLOR = process.stderr.isTTY && !process.env.NO_COLOR;
 
 /**
  * Single-line progress spinner on stderr, only on a terminal. The benchmark
@@ -166,9 +163,12 @@ const spinner = (() => {
 const { COST_IMPASSABLE, COST_MIN } = now.lib;
 
 let seed = 1;
-const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+const rnd = () => {
+  seed = (seed * 1103515245 + 12345) >>> 0;
+  return seed / 2 ** 32;
+};
 
-type Tile = { ne: number, se: number };
+type Tile = { ne: number; se: number };
 
 /** Pick `n` random passable tiles (duplicates possible on small maps). */
 const pick = (costs: Uint8Array, size: number, n: number): Tile[] => {
@@ -194,8 +194,7 @@ const run = (grid: Grid, costs: Uint8Array, size: number, n: number, batched: bo
     for (const cost of [COST_IMPASSABLE, COST_MIN]) {
       if (batched) {
         grid.updateCosts(tiles.map(p => ({ ...p, cost })));
-      }
-      else {
+      } else {
         for (const p of tiles) {
           grid.updateCosts([{ ...p, cost }]);
         }
@@ -210,7 +209,7 @@ const run = (grid: Grid, costs: Uint8Array, size: number, n: number, batched: bo
 };
 
 type Mode = 'single' | 'batched';
-type Timing = { single: number, batched: number, factor: number };
+type Timing = { single: number; batched: number; factor: number };
 
 const MODES = ['single', 'batched'] as const;
 const MODE_LABEL: Record<Mode, string> = { single: 'Single', batched: 'Batched' };
@@ -234,7 +233,7 @@ const measure = (build: Build, costs: Uint8Array, size: number, n: number, caseS
   return { single: round(single), batched: round(batched), factor: round(single / batched, 2) };
 };
 
-type Result = { map: number, changes: number, timings: Record<string, Timing> };
+type Result = { map: number; changes: number; timings: Record<string, Timing> };
 
 const results: Result[] = [];
 
@@ -270,12 +269,11 @@ for (const size of SIZES) {
 
 spinner.stop();
 
-const speedup = (r: Result, mode: Mode) =>
-  round(r.timings['Then']![mode] / r.timings['Now']![mode], 2);
+const speedup = (r: Result, mode: Mode) => round(r.timings.Then![mode] / r.timings.Now![mode], 2);
 
 // ---------------------------------------------------------------- output
 
-const USE_COLOR = process.stdout.isTTY && !process.env['NO_COLOR'];
+const USE_COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const sgr = (code: string) => (s: string) => (USE_COLOR ? `\x1b[${code}m${s}\x1b[0m` : s);
 const bold = sgr('1');
 const dim = sgr('2');
@@ -289,14 +287,12 @@ type Style = (s: string) => string;
 const colorRatio = (ratio: number): Style => (ratio >= 1 + NOISE ? green : ratio <= 1 - NOISE ? red : dim);
 
 /** A matrix row: one per map size, split by mode when two builds are compared. */
-type Row = { map: number, mode?: Mode };
-type Cell = { text: string, style: Style };
+type Row = { map: number; mode?: Mode };
+type Cell = { text: string; style: Style };
 /** `changes` set: a value column inside that column group; unset: a leading label column. */
-type Column = { header: string, changes?: number, cell: (row: Row) => Cell };
+type Column = { header: string; changes?: number; cell: (row: Row) => Cell };
 
-const rows: Row[] = then
-  ? SIZES.flatMap(map => MODES.map(mode => ({ map, mode })))
-  : SIZES.map(map => ({ map }));
+const rows: Row[] = then ? SIZES.flatMap(map => MODES.map(mode => ({ map, mode }))) : SIZES.map(map => ({ map }));
 
 const resultOf = (map: number, changes: number) => results.find(r => r.map === map && r.changes === changes)!;
 const ms = (v: number): Cell => ({ text: `${v.toFixed(PRECISION)} ms`, style: plain });
@@ -307,14 +303,14 @@ const valueColumns = (changes: number): Column[] => {
 
   return then
     ? [
-        { header: 'Then', changes, cell: row => ms(at(row).timings['Then']![row.mode!]) },
-        { header: 'Now', changes, cell: row => ms(at(row).timings['Now']![row.mode!]) },
+        { header: 'Then', changes, cell: row => ms(at(row).timings.Then![row.mode!]) },
+        { header: 'Now', changes, cell: row => ms(at(row).timings.Now![row.mode!]) },
         { header: 'Speedup', changes, cell: row => ratio(speedup(at(row), row.mode!)) },
       ]
     : [
-        { header: 'Single', changes, cell: row => ms(at(row).timings['Now']!.single) },
-        { header: 'Batched', changes, cell: row => ms(at(row).timings['Now']!.batched) },
-        { header: 'Factor', changes, cell: row => ratio(at(row).timings['Now']!.factor) },
+        { header: 'Single', changes, cell: row => ms(at(row).timings.Now!.single) },
+        { header: 'Batched', changes, cell: row => ms(at(row).timings.Now!.batched) },
+        { header: 'Factor', changes, cell: row => ratio(at(row).timings.Now!.factor) },
       ];
 };
 
@@ -337,15 +333,13 @@ const median = (values: number[]): number => {
 /** Median ratio over all cases: Now vs. Then when comparing, batched vs. single otherwise. */
 const ratios = then
   ? results.flatMap(r => MODES.map(mode => speedup(r, mode)))
-  : results.map(r => r.timings['Now']!.factor);
+  : results.map(r => r.timings.Now!.factor);
 const MEDIAN = round(median(ratios), 2);
 
 /** E.g. "Now is 1.12× faster than Then"; below 1 the inverse is reported as slower. */
 const summary = (() => {
   const [subject, other] = then ? ['Now', 'Then'] : ['Batching', 'single calls'];
-  const verdict = MEDIAN >= 1
-    ? `${MEDIAN.toFixed(2)}× faster`
-    : `${(1 / MEDIAN).toFixed(2)}× slower`;
+  const verdict = MEDIAN >= 1 ? `${MEDIAN.toFixed(2)}× faster` : `${(1 / MEDIAN).toFixed(2)}× slower`;
   return `${subject} is ${verdict} than ${other} (median of ${ratios.length} cases)`;
 })();
 
@@ -362,13 +356,12 @@ const pretty = (): string => {
   const widths = columns.map((c, i) => Math.max(c.header.length, ...cells.map(r => r[i]!.text.length)));
 
   // Consecutive columns of the same group share one spanning header.
-  const groups: { label: string, cols: number[] }[] = [];
+  const groups: { label: string; cols: number[] }[] = [];
   columns.forEach((c, i) => {
     const prev = groups.at(-1);
     if (!isLabel(c) && prev && columns[prev.cols[0]!]!.changes === c.changes) {
       prev.cols.push(i);
-    }
-    else {
+    } else {
       groups.push({ label: isLabel(c) ? '' : `${c.changes} changes`, cols: [i] });
     }
   });
@@ -399,7 +392,10 @@ const pretty = (): string => {
       '┤',
       i => (isLabel(columns[i]!) ? ' ' : '─'),
     ),
-    row(columns.map(c => c.header), () => bold),
+    row(
+      columns.map(c => c.header),
+      () => bold,
+    ),
     line('├', () => '┼', '┤'),
   ];
 
@@ -419,32 +415,35 @@ const pretty = (): string => {
 };
 
 /** GitHub-flavored Markdown matrix; the group goes into each header as `(changes)`. */
-const markdown = (): string => [
-  `| ${columns.map(c => (isLabel(c) ? c.header : `${c.header} (${c.changes})`)).join(' | ')} |`,
-  `| ${columns.map(c => (isLabel(c) ? ':---' : '---:')).join(' | ')} |`,
-  ...rows.map((row, i) => {
-    const values = columns.map(c => c.cell(row).text);
-    return `| ${(then && !firstOfMap(i) ? ['', ...values.slice(1)] : values).join(' | ')} |`;
-  }),
-  '',
-  `**${summary}**`,
-  '',
-  `${legend} · (n) = changes per pass`,
-].join('\n');
+const markdown = (): string =>
+  [
+    `| ${columns.map(c => (isLabel(c) ? c.header : `${c.header} (${c.changes})`)).join(' | ')} |`,
+    `| ${columns.map(c => (isLabel(c) ? ':---' : '---:')).join(' | ')} |`,
+    ...rows.map((row, i) => {
+      const values = columns.map(c => c.cell(row).text);
+      return `| ${(then && !firstOfMap(i) ? ['', ...values.slice(1)] : values).join(' | ')} |`;
+    }),
+    '',
+    `**${summary}**`,
+    '',
+    `${legend} · (n) = changes per pass`,
+  ].join('\n');
 
 const json = (): unknown => {
   if (!then) {
-    return results.map(r => ({ map: r.map, changes: r.changes, ...r.timings['Now'] }));
+    return results.map(r => ({ map: r.map, changes: r.changes, ...r.timings.Now }));
   }
 
   return {
+    // biome-ignore lint/suspicious/noThenProperty: plain JSON output, never awaited
     builds: { then: release ? then.label : then.dir, now: now.dir },
     median: MEDIAN,
     results: results.map(r => ({
       map: r.map,
       changes: r.changes,
-      then: r.timings['Then'],
-      now: r.timings['Now'],
+      // biome-ignore lint/suspicious/noThenProperty: plain JSON output, never awaited
+      then: r.timings.Then,
+      now: r.timings.Now,
       speedup: { single: speedup(r, 'single'), batched: speedup(r, 'batched') },
     })),
   };
@@ -457,7 +456,9 @@ const docs = (): string => {
     `Node ${process.version}`,
     `${platform()} ${arch()}`,
     cpus()[0]?.model.trim(),
-  ].filter(Boolean).join(' · ');
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return `\n_${env}_\n\nBuild: \`${relative(PKG_DIR, now.dir)}\`\n\n${markdown()}\n`;
 };

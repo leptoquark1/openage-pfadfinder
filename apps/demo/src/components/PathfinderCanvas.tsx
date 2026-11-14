@@ -1,9 +1,24 @@
 import type { Grid } from '@leptoquark1/openage-pfadfinder';
 import type { Waypoint } from '@leptoquark1/openage-pfadfinder/shared';
-import { COST_IMPASSABLE, FLOW_DIR_MASK, FLOW_LOS_MASK, FLOW_PATHABLE_MASK, FlowDir } from '@leptoquark1/openage-pfadfinder/shared';
+import {
+  COST_IMPASSABLE,
+  FLOW_DIR_MASK,
+  FLOW_LOS_MASK,
+  FLOW_PATHABLE_MASK,
+  FlowDir,
+} from '@leptoquark1/openage-pfadfinder/shared';
 import { useEffect, useRef } from 'react';
 import { COLORS, type Mode } from '../theme.js';
-import { CELL_SIZE, MOB_RADIUS, type Mob, type MovingObstacle, OBSTACLE_SIZE, SECTOR_SIZE, type World, type WorldStats } from '../world/world.js';
+import {
+  CELL_SIZE,
+  MOB_RADIUS,
+  type Mob,
+  type MovingObstacle,
+  OBSTACLE_SIZE,
+  SECTOR_SIZE,
+  type World,
+  type WorldStats,
+} from '../world/world.js';
 import { Legend } from './Legend.js';
 import { PerfPanel } from './PerfPanel.js';
 import { RepoLink } from './RepoLink.js';
@@ -11,17 +26,17 @@ import { StatusBadge } from './StatusBadge.js';
 import { TitleBar } from './TitleBar.js';
 
 interface PathfinderCanvasProps {
-  world: World
-  mode: Mode
-  showFlow: boolean
-  showTraces: boolean
-  showPerf: boolean
-  showLegend: boolean
+  world: World;
+  mode: Mode;
+  showFlow: boolean;
+  showTraces: boolean;
+  showPerf: boolean;
+  showLegend: boolean;
   /** Hint line for the status badge, derived from the latest stats. */
-  status: string
-  onStats: (stats: WorldStats) => void
+  status: string;
+  onStats: (stats: WorldStats) => void;
   /** Called once the target has actually been placed. */
-  onTargetPlaced: () => void
+  onTargetPlaced: () => void;
 }
 
 const FLOW_VECTORS: Record<number, readonly [number, number]> = {
@@ -41,7 +56,17 @@ const PREVIEW_OK_FILL = 'rgba(63, 191, 127, 0.02)';
 const PREVIEW_BAD = '#E5484D';
 const PREVIEW_BAD_FILL = 'rgba(229, 72, 77, 0.18)';
 
-export function PathfinderCanvas({ world, mode, showFlow, showTraces, showPerf, showLegend, status, onStats, onTargetPlaced }: PathfinderCanvasProps) {
+export function PathfinderCanvas({
+  world,
+  mode,
+  showFlow,
+  showTraces,
+  showPerf,
+  showLegend,
+  status,
+  onStats,
+  onTargetPlaced,
+}: PathfinderCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -86,9 +111,9 @@ export function PathfinderCanvas({ world, mode, showFlow, showTraces, showPerf, 
     let painting = false;
     let erasing = false;
     // Last pointer position in canvas pixels; null while the pointer is off-canvas.
-    let cursor: { x: number, y: number } | null = null;
+    let cursor: { x: number; y: number } | null = null;
 
-    const toCanvasPos = (e: PointerEvent): { x: number, y: number } => {
+    const toCanvasPos = (e: PointerEvent): { x: number; y: number } => {
       const rect = canvas.getBoundingClientRect();
       return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
@@ -112,8 +137,7 @@ export function PathfinderCanvas({ world, mode, showFlow, showTraces, showPerf, 
             // click remove the patrol obstacle under the cursor.
             if (world.getPatrolAnchor()) {
               world.cancelPatrolAnchor();
-            }
-            else if (!isDrag) {
+            } else if (!isDrag) {
               world.removeMovingObstacle(x, y);
             }
             break;
@@ -218,11 +242,11 @@ export function PathfinderCanvas({ world, mode, showFlow, showTraces, showPerf, 
 
       const stats = world.getStats();
       if (
-        !lastStats
-        || stats.mobs !== lastStats.mobs
-        || stats.obstacles !== lastStats.obstacles
-        || stats.blocked !== lastStats.blocked
-        || stats.hasTarget !== lastStats.hasTarget
+        !lastStats ||
+        stats.mobs !== lastStats.mobs ||
+        stats.obstacles !== lastStats.obstacles ||
+        stats.blocked !== lastStats.blocked ||
+        stats.hasTarget !== lastStats.hasTarget
       ) {
         lastStats = stats;
         onStatsRef.current(stats);
@@ -262,15 +286,15 @@ export function PathfinderCanvas({ world, mode, showFlow, showTraces, showPerf, 
  * overlay and the cursor style.
  */
 interface Preview {
-  readonly mode: Mode
-  readonly x: number
-  readonly y: number
+  readonly mode: Mode;
+  readonly x: number;
+  readonly y: number;
   /** True when the mode's object can be placed at this position. */
-  readonly valid: boolean
+  readonly valid: boolean;
   /** Wall cell / moving obstacle / mob that right-click would remove here. */
-  readonly eraseCandidate: Waypoint | MovingObstacle | Mob | null
+  readonly eraseCandidate: Waypoint | MovingObstacle | Mob | null;
   /** Pending patrol anchor, when the mode is mid-placement. */
-  readonly patrolAnchor: { x: number, y: number } | null
+  readonly patrolAnchor: { x: number; y: number } | null;
 }
 
 function evaluatePreview(world: World, mode: Mode, x: number, y: number): Preview | null {
@@ -552,7 +576,12 @@ function drawPreview(ctx: CanvasRenderingContext2D, preview: Preview): void {
  * cursor plus the endpoint box there — green when the second click would
  * spawn, red otherwise. Without an anchor only the endpoint box shows.
  */
-function drawPatrolObstaclePreview(ctx: CanvasRenderingContext2D, x: number, y: number, anchor: { x: number, y: number } | null): void {
+function drawPatrolObstaclePreview(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  anchor: { x: number; y: number } | null,
+): void {
   if (anchor) {
     ctx.setLineDash([4, 6]);
     ctx.beginPath();
@@ -606,11 +635,14 @@ function drawEraseHighlight(ctx: CanvasRenderingContext2D, candidate: Waypoint |
     const cx = candidate.ne * CELL_SIZE;
     const cy = candidate.se * CELL_SIZE;
     ctx.strokeRect(cx + 1.5, cy + 1.5, CELL_SIZE - 3, CELL_SIZE - 3);
-  }
-  else if ('size' in candidate) {
-    ctx.strokeRect(candidate.x - candidate.size / 2 + 0.5, candidate.y - candidate.size / 2 + 0.5, candidate.size - 1, candidate.size - 1);
-  }
-  else {
+  } else if ('size' in candidate) {
+    ctx.strokeRect(
+      candidate.x - candidate.size / 2 + 0.5,
+      candidate.y - candidate.size / 2 + 0.5,
+      candidate.size - 1,
+      candidate.size - 1,
+    );
+  } else {
     ctx.beginPath();
     ctx.arc(candidate.x, candidate.y, MOB_RADIUS + 3, 0, Math.PI * 2);
     ctx.stroke();

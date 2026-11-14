@@ -7,8 +7,8 @@ import { FlowField } from './flow-field.js';
 import { IntegrationField } from './integration-field.js';
 
 export interface IntegrationFlowPair {
-  readonly integrationField: IntegrationField
-  readonly flowField: FlowField
+  readonly integrationField: IntegrationField;
+  readonly flowField: FlowField;
 }
 
 /**
@@ -43,8 +43,7 @@ export class Integrator {
       const cache = ref.deref();
       if (cache) {
         count += cache.size;
-      }
-      else {
+      } else {
         this.cacheRefs.delete(ref);
       }
     }
@@ -58,8 +57,7 @@ export class Integrator {
       cache = new FieldCache();
       this.caches.set(costField, cache);
       this.cacheRefs.add(new WeakRef(cache));
-    }
-    else if (costField.isDirty(cache.version)) {
+    } else if (costField.isDirty(cache.version)) {
       cache.clear();
     }
     cache.version = costField.getVersion();
@@ -75,8 +73,7 @@ export class Integrator {
     if (withLos) {
       const wavefrontBlocked = integrationField.integrateLos(costField, target);
       integrationField.integrateCostFromWavefront(costField, wavefrontBlocked);
-    }
-    else {
+    } else {
       integrationField.integrateCost(costField, target);
     }
 
@@ -97,16 +94,9 @@ export class Integrator {
     const integrationField = new IntegrationField(costField.getSize());
 
     if (withLos) {
-      const wavefrontBlocked = integrationField.integrateLosPortal(
-        costField,
-        other,
-        otherSectorId,
-        portal,
-        target,
-      );
+      const wavefrontBlocked = integrationField.integrateLosPortal(costField, other, otherSectorId, portal, target);
       integrationField.integrateCostFromWavefront(costField, wavefrontBlocked);
-    }
-    else {
+    } else {
       integrationField.integrateCostPortal(costField, otherSectorId, portal);
     }
 
@@ -179,14 +169,7 @@ export class Integrator {
       return { integrationField: integrationCopy, flowField: flowCopy };
     }
 
-    const integrationField = this.integratePortal(
-      costField,
-      other,
-      otherSectorId,
-      portal,
-      target,
-      withLos,
-    );
+    const integrationField = this.integratePortal(costField, other, otherSectorId, portal, target, withLos);
     const flowField = this.buildPortal(integrationField, other, otherSectorId, portal, withLos);
 
     // Cache the result (clone first, then clear dynamic flags on the clone)

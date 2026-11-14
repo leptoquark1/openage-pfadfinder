@@ -24,17 +24,16 @@ function walled(): Uint8Array {
   return costs;
 }
 
-const build = (costs: Uint8Array, gridId: number) =>
-  buildGrid(costs, { width: SIZE, height: SIZE }, SECTOR, gridId);
+const build = (costs: Uint8Array, gridId: number) => buildGrid(costs, { width: SIZE, height: SIZE }, SECTOR, gridId);
 
 /** Follow the flow route cell by cell; the cells stepped on. */
-function follow(pf: Pathfinder, gridId: number): { ne: number, se: number }[] {
+function follow(pf: Pathfinder, gridId: number): { ne: number; se: number }[] {
   const route = pf.getFlowRoute({ gridId, start: START, target: TARGET });
   expect(route).not.toBeNull();
   return followRoute(route!, START, 4 * SIZE).slice(1);
 }
 
-function expectAroundWall(costs: Uint8Array, cells: { ne: number, se: number }[]): void {
+function expectAroundWall(costs: Uint8Array, cells: { ne: number; se: number }[]): void {
   expect(cells.at(-1)).toEqual(TARGET);
   for (const { ne, se } of cells) {
     expect(costs[ne + se * SIZE], `${ne},${se}`).not.toBe(COST_IMPASSABLE);
