@@ -132,7 +132,7 @@ new Grid(id, size: Size2s, sectors: Sector[]);    // grid pre-filled with sector
 | ------ | ----------- |
 | `getId()` / `getSize()` / `getSectorSize()` | Id (sector count `{ width, height }`), sector edge length in cells. |
 | `getSectors()`, `addSector(sector)` | Access/append sectors. Sectors are indexed by their position. |
-| `getSector(x, y)` / `getSector(id)` | Look up a sector by grid position or id (overloads). |
+| `getSector(x, y)` / `getSector(id)` | Look up a sector by grid position or id (overloads). By id it is a direct lookup when a sector's id is its index (`id = x + y * width`, as `buildGrid()` numbers them and `getSectorPosition()` assumes); other ids are found by a search over all sectors. |
 | `getSectorPosition(sectorId)` | Sector's `{ x, y }` in the grid. |
 | `getSectorAt(globalNe, globalSe)` | Sector containing a global cell; `undefined` outside the map. |
 | `globalToLocal(globalNe, globalSe)` | → `{ sectorX, sectorY, localNe, localSe }`. |
