@@ -76,4 +76,4 @@ jobs:
           plugins: 'code-review@claude-code-plugins'
           # Without --comment the plugin only prints its findings to the (hidden) log.
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number || github.event.issue.number }} --comment'
-          claude_args: "--model ${{ vars.CLAUDE_MODEL || 'claude-opus-5-5' }}"
+          claude_args: "--model ${{ vars.CLAUDE_MODEL || 'claude-opus-5-5' }} --effort ${{ vars.CLAUDE_EFFORT || 'high' }}"
