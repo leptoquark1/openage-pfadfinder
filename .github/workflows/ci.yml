@@ -39,7 +39,10 @@ jobs:
           set -euo pipefail
 
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "verify=true" >> "$GITHUB_OUTPUT"
+            echo "install=true" >> "$GITHUB_OUTPUT"
+            echo "lint=true" >> "$GITHUB_OUTPUT"
+            echo "lib=true" >> "$GITHUB_OUTPUT"
+            echo "demo=true" >> "$GITHUB_OUTPUT"
             echo "release_changed=false" >> "$GITHUB_OUTPUT"
             echo "changeset_added=false" >> "$GITHUB_OUTPUT"
             echo "check_changesets=false" >> "$GITHUB_OUTPUT"
@@ -56,9 +59,16 @@ jobs:
           echo "Changed files (vs $BASE):"
           printf '%s\n' "$STATUS"
 
-          # Docs-only paths: everything else (packages/, apps/, configs, lockfile,
-          # workflows, ...) triggers the full verify run.
+          # Docs never trigger a verify step.
           DOCS_ONLY_RE='(\.md$|^docs/|^LICENSE$)'
+          # Workspace-wide inputs (dependencies, toolchain, this workflow): verify everything.
+          SHARED_RE='^(package\.json|pnpm-[^/]+\.yaml|biome\.json|\.nvmrc|\.npmrc|\.github/workflows/ci\.yml)$'
+          # Library sources, tests, scripts and configs.
+          LIB_RE='^packages/'
+          # Apps (the demo bundles the library, so library changes rebuild it too).
+          APPS_RE='^apps/'
+          # Files Biome checks (see files.includes in biome.json).
+          LINT_RE='\.(js|mjs|cjs|ts|tsx)$'
           # Paths that change the published package and therefore need a changeset.
           # Must match changedFilePatterns in .changeset/config.json (which are
           # relative to the package directory).
@@ -69,6 +79,10 @@ jobs:
           # grep exit can SIGPIPE the producer and turn a match into a failure.
           RELEASE_FILES="$(printf '%s\n' "$FILES" | grep -E "$RELEASE_RE" || true)"
           NON_DOCS_FILES="$(printf '%s\n' "$FILES" | grep -vE "$DOCS_ONLY_RE" || true)"
+          SHARED_FILES="$(printf '%s\n' "$NON_DOCS_FILES" | grep -E "$SHARED_RE" || true)"
+          LIB_FILES="$(printf '%s\n' "$NON_DOCS_FILES" | grep -E "$LIB_RE" || true)"
+          APPS_FILES="$(printf '%s\n' "$NON_DOCS_FILES" | grep -E "$APPS_RE" || true)"
+          LINT_FILES="$(printf '%s\n' "$NON_DOCS_FILES" | grep -E "$LINT_RE" || true)"
           # Only added/modified changesets count; deleting one never bumps a version.
           ADDED_CHANGESETS="$(printf '%s\n' "$STATUS" \
             | awk -F'\t' '$1 ~ /^[AM]$/ { print $2 }' \
@@ -80,12 +94,25 @@ jobs:
             echo "release_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          # Package changes always verify (and need the install for `changeset status`).
-          if [ -n "$NON_DOCS_FILES" ] || [ -n "$RELEASE_FILES" ]; then
-            echo "verify=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "verify=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Only documentation changed. Skipping dependency install and verify steps."
+          LIB=false; DEMO=false; LINT=false
+          if [ -n "$SHARED_FILES" ]; then LIB=true; DEMO=true; LINT=true; fi
+          # Release files always verify the library (and need the install for `changeset status`).
+          if [ -n "$LIB_FILES" ] || [ -n "$RELEASE_FILES" ]; then LIB=true; DEMO=true; fi
+          if [ -n "$APPS_FILES" ]; then DEMO=true; fi
+          if [ -n "$LINT_FILES" ] || [ -n "$LIB_FILES" ] || [ -n "$APPS_FILES" ]; then LINT=true; fi
+
+          INSTALL=false
+          if [ "$LIB" = "true" ] || [ "$DEMO" = "true" ] || [ "$LINT" = "true" ]; then INSTALL=true; fi
+
+          {
+            echo "install=$INSTALL"
+            echo "lint=$LINT"
+            echo "lib=$LIB"
+            echo "demo=$DEMO"
+          } >> "$GITHUB_OUTPUT"
+          echo "Verify scopes: lint=$LINT lib=$LIB demo=$DEMO"
+          if [ "$INSTALL" = "false" ]; then
+            echo "::notice::No verify-relevant files changed. Skipping dependency install and verify steps."
           fi
 
           if [ -n "$ADDED_CHANGESETS" ]; then
@@ -102,18 +129,18 @@ jobs:
           esac
 
       - name: Install pnpm
-        if: steps.changed.outputs.verify == 'true'
+        if: steps.changed.outputs.install == 'true'
         uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        if: steps.changed.outputs.verify == 'true'
+        if: steps.changed.outputs.install == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
 
       - name: Install dependencies
-        if: steps.changed.outputs.verify == 'true'
+        if: steps.changed.outputs.install == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Changeset rules
@@ -133,27 +160,36 @@ jobs:
           fi
 
       - name: Lint
-        if: steps.changed.outputs.verify == 'true'
+        if: steps.changed.outputs.lint == 'true'
         run: pnpm lint
 
+      # The demo consumes the library from its built dist output.
       - name: Build library
-        if: steps.changed.outputs.verify == 'true'
+        if: steps.changed.outputs.lib == 'true' || steps.changed.outputs.demo == 'true'
         run: pnpm build
 
-      - name: Typecheck
-        if: steps.changed.outputs.verify == 'true'
-        run: pnpm typecheck
+      - name: Typecheck library
+        if: steps.changed.outputs.lib == 'true'
+        run: pnpm --filter @leptoquark1/openage-pfadfinder typecheck
 
-      - name: Test (with coverage thresholds)
-        if: steps.changed.outputs.verify == 'true'
-        run: pnpm test:coverage
+      - name: Typecheck demo
+        if: steps.changed.outputs.demo == 'true'
+        run: pnpm --filter @leptoquark1/openage-pfadfinder-demo typecheck
+
+      - name: Test library (with coverage thresholds)
+        if: steps.changed.outputs.lib == 'true'
+        run: pnpm --filter @leptoquark1/openage-pfadfinder test:coverage
+
+      - name: Test demo
+        if: steps.changed.outputs.demo == 'true'
+        run: pnpm --filter @leptoquark1/openage-pfadfinder-demo test
 
       - name: Build demo
-        if: steps.changed.outputs.verify == 'true'
+        if: steps.changed.outputs.demo == 'true'
         run: pnpm --filter @leptoquark1/openage-pfadfinder-demo build
 
       - name: Validate package
-        if: steps.changed.outputs.verify == 'true'
+        if: steps.changed.outputs.lib == 'true'
         run: pnpm check:package
 
   benchmark:
