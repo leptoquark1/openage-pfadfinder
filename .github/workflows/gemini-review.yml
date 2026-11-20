@@ -62,6 +62,8 @@ jobs:
         id: 'gemini_pr_review'
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
+          # Gemini CLI >= 0.69.0 refuses to clone extensions while GIT_CONFIG_SYSTEM is set.
+          GIT_CONFIG_SYSTEM: ''
           GITHUB_TOKEN: '${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}'
           GEMINI_API_KEY: '${{ secrets.GEMINI_API_KEY }}'
         with:
