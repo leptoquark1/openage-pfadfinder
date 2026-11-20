@@ -72,6 +72,7 @@ class FlowRoute {
 
 - `next()` returns the target itself when it is in clear straight sight (string-pulling), and `null` at the target, outside the route's sectors, or on cells the route does not reach. A sector may appear in several steps if the route leaves and re-enters it around a wall; the first step whose field reaches the cell wins.
 - `walk()` emits a waypoint at each direction change and stops once the target is in straight sight (LOS-flagged cell).
+- Treat the flow fields of `getSteps()` as read-only. Outside the target sector they are the pathfinder's cached fields, shared by every route through the same portal (`Integrator.getPortalShared()`); only the target sector's field belongs to the route alone.
 
 ```typescript
 function isLineWalkable(grid: Grid, fromNe, fromSe, toNe, toSe): boolean;
@@ -300,12 +301,15 @@ class Integrator {
   buildPortal(integrationField, other, otherSectorId, portal, _withLos = true);   // no cache
   get(costField, target: TileDelta, withLos = true): IntegrationFlowPair;         // integration + flow, no cache
   getPortal(costField, other, otherSectorId, portal, target, withLos = true): IntegrationFlowPair;
+  getPortalShared(costField, other, otherSectorId, portal, target): IntegrationFlowPair; // the cached fields themselves, read-only
 }
 ```
 
-`getPortal()` is the cached variant used by the pathfinder. Every cost field gets its own cache, held weakly, so grids never share entries and a replaced grid's cache is released with it. Within a cost field, entries are keyed by the portal's cell range and the sector it is entered from, not by the portal id. Once a cost field has been modified, its whole cache is cleared.
+`getPortal()` and `getPortalShared()` are the cached variants. Every cost field gets its own cache, held weakly, so grids never share entries and a replaced grid's cache is released with it. Within a cost field, entries are keyed by the portal's cell range and the sector it is entered from, not by the portal id. Once a cost field has been modified, its whole cache is cleared.
 
-The cached fields hold costs and directions only, integrated from the whole portal without line of sight: that part depends on nothing but the cost field and the portal's cells. Line of sight also depends on `target` and `other`, so `withLos` adds its marks to the returned fields, never to the cached ones. One entry therefore serves requests with and without LOS, and a request gets the same fields whether or not they were cached. Returned fields are always clones (**copy-on-read**), so callers may mutate them freely.
+The cached fields hold costs and directions only, integrated from the whole portal without line of sight: that part depends on nothing but the cost field and the portal's cells. Line of sight also depends on `target` and `other`, so `withLos` adds its marks to the returned fields, never to the cached ones. One entry therefore serves requests with and without LOS, and a request gets the same fields whether or not they were cached. `getPortal()` always returns clones (**copy-on-read**), so callers may mutate them freely.
+
+`getPortalShared()` returns the cached fields themselves, without line of sight and without copying. They are shared with the cache and every other caller: anything written to them shows up in later requests, so only read them. The pathfinder uses it for the start and transit sectors of its routes.
 
 ## Field cache
 

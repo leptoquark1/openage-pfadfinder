@@ -21,9 +21,10 @@ export interface IntegrationFlowPair {
  * also depends on the target and the field behind the portal. A request
  * with LOS gets the marks added to its own copy.
  *
- * Copy-on-read: the cached fields are cloned before they are handed out
- * (and before the LOS pass or flag transfer), so the cache stays pristine
- * for future lookups.
+ * Copy-on-read: `getPortal()` clones the cached fields before it hands
+ * them out (and before the LOS pass or flag transfer), so the cache stays
+ * pristine for future lookups. `getPortalShared()` skips the copies for
+ * callers that only read.
  *
  * Cache scope: every cost field gets its own cache, held weakly, so fields
  * of different grids never share entries and the cache of a replaced grid
@@ -159,23 +160,11 @@ export class Integrator {
     target: TileDelta,
     withLos = true,
   ): IntegrationFlowPair {
-    const cache = this.cacheFor(costField);
-    const key = portalRangeKey(portal, otherSectorId);
-
-    let entry = cache.get(key);
-    if (!entry) {
-      const cachedIntegration = this.integratePortal(costField, other, otherSectorId, portal, target, false);
-      entry = {
-        integrationField: cachedIntegration,
-        flowField: this.buildPortal(cachedIntegration, other, otherSectorId, portal, false),
-        costFieldVersion: costField.getVersion(),
-      };
-      cache.add(key, entry);
-    }
+    const cached = this.getPortalShared(costField, other, otherSectorId, portal, target);
 
     // Copy-on-read: the caller's fields, free to take the LOS marks
-    const integrationField = entry.integrationField.clone();
-    const flowField = entry.flowField.clone();
+    const integrationField = cached.integrationField.clone();
+    const flowField = cached.flowField.clone();
 
     if (withLos) {
       integrationField.integrateLosPortal(costField, other, otherSectorId, portal, target);
@@ -183,6 +172,37 @@ export class Integrator {
     }
 
     return { integrationField, flowField };
+  }
+
+  /**
+   * The cached integration + flow field for a portal entry themselves:
+   * `getPortal()` without line of sight and without its copies.
+   *
+   * Read-only. The fields are shared with the cache and with every other
+   * caller, so anything written to them shows up in later requests. For
+   * callers that only read them, as `Pathfinder` does for its routes.
+   */
+  getPortalShared(
+    costField: CostField,
+    other: IntegrationField,
+    otherSectorId: SectorId,
+    portal: Portal,
+    target: TileDelta,
+  ): IntegrationFlowPair {
+    const cache = this.cacheFor(costField);
+    const key = portalRangeKey(portal, otherSectorId);
+
+    let entry = cache.get(key);
+    if (!entry) {
+      const integrationField = this.integratePortal(costField, other, otherSectorId, portal, target, false);
+      entry = {
+        integrationField,
+        flowField: this.buildPortal(integrationField, other, otherSectorId, portal, false),
+        costFieldVersion: costField.getVersion(),
+      };
+      cache.add(key, entry);
+    }
+    return entry;
   }
 }
 

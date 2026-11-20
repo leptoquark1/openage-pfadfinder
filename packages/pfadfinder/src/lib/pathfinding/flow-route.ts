@@ -7,7 +7,12 @@ import type { Grid } from '../graph/grid.js';
 import type { Sector } from '../graph/sector.js';
 import { pathFound, pathNotFound } from './path-result.js';
 
-/** One sector of a route and the flow field that leads through it. */
+/**
+ * One sector of a route and the flow field that leads through it.
+ *
+ * Read-only: outside the target sector the field is the cached one, shared
+ * with every other route through the same portal.
+ */
 export interface FlowStep {
   readonly sector: Sector;
   readonly flowField: FlowField;

@@ -220,13 +220,14 @@ export class Pathfinder {
       const portal = portals[i]!;
       const nextSectorId = routeSectors[i + 1]!.getId();
 
-      const { flowField, integrationField } = this.integrator.getPortal(
+      // No LOS outside the target sector, and the route only reads its
+      // fields: take the cached ones as they are instead of copies.
+      const { flowField, integrationField } = this.integrator.getPortalShared(
         sector.getCostField(),
         nextIntegration,
         nextSectorId,
         portal,
         portal.getEntryCenter(sector.getId()),
-        false, // no LOS outside the target sector
       );
 
       steps[i] = { sector, flowField };
