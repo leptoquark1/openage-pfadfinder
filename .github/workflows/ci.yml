@@ -3,6 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!LICENSE'
+      - '!.changeset/**'
+      - '!packages/**/scripts/**'
+      - '!.github/**'
+      - '.github/workflows/ci.yml'
   pull_request:
 
 permissions:
