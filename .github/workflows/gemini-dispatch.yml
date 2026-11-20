@@ -54,16 +54,17 @@ jobs:
           env | grep '^DEBUG_'
 
   dispatch:
-    # Opened PRs: not from a fork and not from Dependabot (no access to the
-    # Gemini secrets). Comments: `@gemini-cli /review` on a PR, only from
-    # OWNER/MEMBER/COLLABORATOR. Disable Gemini entirely by setting the
-    # repository variable `GEMINI_REVIEW_ENABLED` to `false`.
+    # Maintainers (OWNER/MEMBER/COLLABORATOR) only. Opened PRs: authored by a
+    # maintainer and not from a fork (no access to the Gemini secrets).
+    # Comments: `@gemini-cli /review` on a PR by a maintainer. Disable Gemini
+    # entirely by setting the repository variable `GEMINI_REVIEW_ENABLED` to
+    # `false`.
     if: |-
       vars.GEMINI_REVIEW_ENABLED != 'false' && (
       (
         github.event_name == 'pull_request' &&
         github.event.pull_request.head.repo.fork == false &&
-        github.event.pull_request.user.login != 'dependabot[bot]'
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
       ) || (
         github.event.sender.type == 'User' &&
         (github.event_name != 'issue_comment' || github.event.issue.pull_request) &&

@@ -1,7 +1,9 @@
 name: '🤖 Claude Code Review'
 
-# Automatic PR code review with Claude: runs when a PR is opened or new commits
-# are pushed to it, but only if code-relevant paths changed (see `paths`).
+# PR code review with Claude, for maintainers (OWNER/MEMBER/COLLABORATOR) only:
+# - automatically when a maintainer's PR is opened or new commits are pushed to
+#   it, but only if code-relevant paths changed (see `paths`);
+# - on demand with a `@claude /review` comment on a PR from a maintainer.
 # Disable it by setting the repository variable `CLAUDE_REVIEW_ENABLED` to
 # `false`.
 
@@ -23,19 +25,34 @@ on:
       - '.npmrc'
       # Markdown (docs, READMEs, changesets) alone never needs a code review.
       - '!**/*.md'
-
-concurrency:
-  group: '${{ github.workflow }}-${{ github.event.pull_request.number }}'
-  cancel-in-progress: true
+  issue_comment:
+    types:
+      - 'created'
 
 jobs:
   claude-review:
-    # Not from a fork and not from Dependabot (no access to the Claude secrets).
+    # Automatic: PRs by a maintainer, not drafts, not from a fork (no access to
+    # the Claude secrets). Manual: `@claude /review` comment on a PR by a
+    # maintainer.
     if: |-
-      vars.CLAUDE_REVIEW_ENABLED != 'false' &&
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.fork == false &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      vars.CLAUDE_REVIEW_ENABLED != 'false' && (
+        (
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.draft == false &&
+          github.event.pull_request.head.repo.fork == false &&
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+        ) || (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request &&
+          github.event.sender.type == 'User' &&
+          startsWith(github.event.comment.body, '@claude /review') &&
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+        )
+      )
+    # Job-level, so unrelated PR comments (skipped runs) never cancel a review.
+    concurrency:
+      group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}'
+      cancel-in-progress: true
     runs-on: 'ubuntu-latest'
     timeout-minutes: 15
     permissions:
@@ -57,4 +74,6 @@ jobs:
           anthropic_api_key: '${{ secrets.ANTHROPIC_API_KEY }}'
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # Without --comment the plugin only prints its findings to the (hidden) log.
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number || github.event.issue.number }} --comment'
+          claude_args: "--model ${{ vars.CLAUDE_MODEL || 'claude-opus-5-5' }}"
