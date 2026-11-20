@@ -3,6 +3,12 @@ name: Deploy demo to GitHub Pages
 on:
   push:
     branches: [main]
+    paths:
+      - "packages/**"
+      - "apps/**"
+      - "package.json"
+      - "pnpm-*.yaml"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
