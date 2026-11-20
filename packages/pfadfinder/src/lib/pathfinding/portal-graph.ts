@@ -128,6 +128,8 @@ interface SearchNode {
   heuristicCost: number;
   futureCost: number;
   prev: SearchNode | undefined;
+  /** Popped from the open set: its cost is final and it is not visited again. */
+  closed: boolean;
 }
 
 export function portalAStar(
@@ -149,7 +151,6 @@ export function portalAStar(
   const targetIds = new Set(targetPortals.map(p => p.getId()));
 
   const openSet = new BinaryHeap<SearchNode>();
-  const closedSet = new Set<PortalId>();
   const searchNodes = new Map<PortalId, SearchNode>();
 
   // Track closest node for partial-path fallback
@@ -177,6 +178,7 @@ export function portalAStar(
       heuristicCost: h,
       futureCost: g + h,
       prev: undefined,
+      closed: false,
     };
     searchNodes.set(startPortal.getId(), sn);
     openSet.push(sn, sn.futureCost);
@@ -199,7 +201,7 @@ export function portalAStar(
       return { found: true, portals, partial: false };
     }
 
-    closedSet.add(current.portalNode.portal.getId());
+    current.closed = true;
 
     // Update closest node (minimum heuristic to target)
     if (!closestNode || current.heuristicCost < closestNode.heuristicCost) {
@@ -207,15 +209,23 @@ export function portalAStar(
     }
 
     // entrySector is the sector we arrive in after crossing this portal.
-    // Exits are reachable from within this sector.
-    const exits = current.portalNode.getExits(current.entrySector);
+    // Exits are reachable from within this sector: the portal's current
+    // exits that have a cost, as PortalNode.getExits() lists them, read
+    // in place instead of into a new map per node.
+    const exitCosts = current.portalNode.exits.get(current.entrySector);
 
-    for (const [exitId, distanceCost] of exits) {
-      if (closedSet.has(exitId)) {
+    for (const exit of current.portalNode.portal.getConnected(current.entrySector)) {
+      const exitId = exit.getId();
+      const distanceCost = exitCosts?.get(exitId);
+      if (distanceCost === undefined) {
         continue;
       }
 
-      const exitPortalNode = nodeMap.get(exitId);
+      const existing = searchNodes.get(exitId);
+      if (existing?.closed) {
+        continue;
+      }
+      const exitPortalNode = existing?.portalNode ?? nodeMap.get(exitId);
       if (!exitPortalNode) {
         continue;
       }
@@ -225,13 +235,23 @@ export function portalAStar(
       // We enter the exit portal from current.entrySector (where we are now),
       // and arrive in exitPortal.getExitSector(current.entrySector).
       const exitEntrySector = exitPortal.getExitSector(current.entrySector);
+      const newCost = current.currentCost + distanceCost;
+
+      // A node already reached at no higher cost stays as it is (but see the
+      // start node case below); skip the heuristic for it.
+      if (
+        existing &&
+        newCost >= existing.currentCost &&
+        !(existing.prev === undefined && existing.entrySector !== exitEntrySector)
+      ) {
+        continue;
+      }
+
       const exitCenter = exitPortal.getEntryCenter(current.entrySector);
       const exitCenterGlobal = PortalNode.localToGlobal(grid, current.entrySector, exitCenter.ne, exitCenter.se);
-      const newCost = current.currentCost + distanceCost;
       const h = PortalNode.heuristicCost(exitCenterGlobal, targetPosGlobal);
       const futureCost = newCost + h;
 
-      const existing = searchNodes.get(exitId);
       if (!existing) {
         const sn: SearchNode = {
           portalNode: exitPortalNode,
@@ -240,6 +260,7 @@ export function portalAStar(
           heuristicCost: h,
           futureCost,
           prev: current,
+          closed: false,
         };
         searchNodes.set(exitId, sn);
         openSet.push(sn, futureCost);
