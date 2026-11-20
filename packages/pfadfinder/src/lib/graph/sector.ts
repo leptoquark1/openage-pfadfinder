@@ -14,6 +14,9 @@ export class Sector {
   private readonly position: Vector2s;
   private readonly costField: CostField;
   private portals: Portal[] = [];
+  /** Area of each cell (see `getAreas()`), for the cost field version below. */
+  private areas: Uint16Array | Int32Array | null = null;
+  private areasVersion = -1;
 
   constructor(id: SectorId, position: Vector2s, costField: CostField) {
     this.id = id;
@@ -140,19 +143,31 @@ export class Sector {
   }
 
   /**
-   * Connect mutually reachable portals within this sector.
-   * Floods the 4-connected areas of passable cells the portals' entry cells
-   * lie in, once for the whole sector; two portals are exits of each other
-   * when their entry cells share an area (not split by walls).
+   * The area of each cell: 4-connected passable cells share an area (numbered
+   * from 1), impassable cells have area 0. Two cells of this sector reach each
+   * other inside it exactly when they lie in the same area.
+   *
+   * Labelled on first use and again after the cost field changed (by its
+   * version); do not write to the returned array.
+   */
+  getAreas(): Uint16Array | Int32Array {
+    const version = this.costField.getVersion();
+    if (!this.areas || this.areasVersion !== version) {
+      this.areas = labelAreas(this.costField.getCosts(), this.costField.getSize());
+      this.areasVersion = version;
+    }
+    return this.areas;
+  }
+
+  /**
+   * Connect mutually reachable portals within this sector: two portals are
+   * exits of each other when their entry cells share an area (`getAreas()`),
+   * i.e. are not split by walls.
    * Must be called after all sectors and portals are initialized.
    */
   connectExits(): void {
     const size = this.costField.getSize();
-    const costCells = this.costField.getCosts();
-    // Area of each cell, 0 while no flood reached it; every cell is queued once.
-    const areas = new Int32Array(size * size);
-    const queue = new Int32Array(size * size);
-    let areaCount = 0;
+    const areas = this.getAreas();
 
     // The areas each portal's passable entry cells on this side lie in
     const portalAreas = this.portals.map(portal => {
@@ -161,14 +176,10 @@ export class Sector {
       const found = new Set<number>();
       for (let y = entryStart.se; y <= entryEnd.se; y++) {
         for (let x = entryStart.ne; x <= entryEnd.ne; x++) {
-          const idx = xyToIndex(x, y, size);
-          if (costCells[idx]! === COST_IMPASSABLE) {
-            continue;
+          const area = areas[xyToIndex(x, y, size)]!;
+          if (area !== 0) {
+            found.add(area);
           }
-          if (areas[idx] === 0) {
-            floodArea(costCells, size, idx, ++areaCount, areas, queue);
-          }
-          found.add(areas[idx]!);
         }
       }
       return found;
@@ -194,40 +205,50 @@ function sharesArea(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
 }
 
 /**
- * Give the 4-connected passable cells around `start` (all still 0 in
- * `areas`) the area `area`, breadth first through `queue`.
+ * Label every passable cell with its area: breadth-first floods over
+ * 4-connected passable cells, one per area, each cell queued once.
  */
-function floodArea(
-  costCells: Uint8Array,
-  size: number,
-  start: number,
-  area: number,
-  areas: Int32Array,
-  queue: Int32Array,
-): void {
-  let head = 0;
-  let tail = 0;
-  const visit = (idx: number): void => {
-    if (areas[idx] === 0 && costCells[idx] !== COST_IMPASSABLE) {
-      areas[idx] = area;
-      queue[tail++] = idx;
+function labelAreas(costCells: Uint8Array, size: number): Uint16Array | Int32Array {
+  const cells = size * size;
+  // An area has at least one cell, so the ids fit wherever the cell count does.
+  const areas = cells <= 0xffff ? new Uint16Array(cells) : new Int32Array(cells);
+  const queue = new Int32Array(cells);
+  let areaCount = 0;
+
+  for (let seed = 0; seed < cells; seed++) {
+    if (areas[seed] !== 0 || costCells[seed] === COST_IMPASSABLE) {
+      continue;
     }
-  };
-  visit(start);
-  while (head < tail) {
-    const idx = queue[head++]!;
-    const x = idx % size;
-    if (idx >= size) {
-      visit(idx - size);
-    }
-    if (x > 0) {
-      visit(idx - 1);
-    }
-    if (idx < size * (size - 1)) {
-      visit(idx + size);
-    }
-    if (x < size - 1) {
-      visit(idx + 1);
+    const area = ++areaCount;
+    let head = 0;
+    let tail = 0;
+    areas[seed] = area;
+    queue[tail++] = seed;
+    while (head < tail) {
+      const idx = queue[head++]!;
+      const x = idx % size;
+      let next = idx - size;
+      if (next >= 0 && areas[next] === 0 && costCells[next] !== COST_IMPASSABLE) {
+        areas[next] = area;
+        queue[tail++] = next;
+      }
+      next = idx - 1;
+      if (x > 0 && areas[next] === 0 && costCells[next] !== COST_IMPASSABLE) {
+        areas[next] = area;
+        queue[tail++] = next;
+      }
+      next = idx + size;
+      if (next < cells && areas[next] === 0 && costCells[next] !== COST_IMPASSABLE) {
+        areas[next] = area;
+        queue[tail++] = next;
+      }
+      next = idx + 1;
+      if (x < size - 1 && areas[next] === 0 && costCells[next] !== COST_IMPASSABLE) {
+        areas[next] = area;
+        queue[tail++] = next;
+      }
     }
   }
+
+  return areas;
 }
