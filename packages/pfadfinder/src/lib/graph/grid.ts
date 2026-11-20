@@ -68,7 +68,10 @@ export class Grid {
       const idx = a + b * this.size.width;
       return this.sectors[idx];
     }
-    return this.sectors.find(s => s.getId() === a);
+    // Ids are normally the sector's index (row-major, see getSectorPosition);
+    // only a grid filled in another order needs the search.
+    const sector = this.sectors[a];
+    return sector?.getId() === a ? sector : this.sectors.find(s => s.getId() === a);
   }
 
   /**
