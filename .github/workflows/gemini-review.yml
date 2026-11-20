@@ -62,8 +62,6 @@ jobs:
         id: 'gemini_pr_review'
         env:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
-          # Gemini CLI >= 0.69.0 refuses to clone extensions while GIT_CONFIG_SYSTEM is set.
-          GIT_CONFIG_SYSTEM: ''
           GITHUB_TOKEN: '${{ steps.mint_identity_token.outputs.token || secrets.GITHUB_TOKEN || github.token }}'
           GEMINI_API_KEY: '${{ secrets.GEMINI_API_KEY }}'
         with:
@@ -72,7 +70,9 @@ jobs:
           gcp_service_account: '${{ vars.SERVICE_ACCOUNT_EMAIL }}'
           gcp_workload_identity_provider: '${{ vars.GCP_WIF_PROVIDER }}'
           gemini_api_key: '${{ secrets.GEMINI_API_KEY }}'
-          gemini_cli_version: '${{ vars.GEMINI_CLI_VERSION }}'
+          # Gemini CLI >= 0.69.0 fails to git-clone extensions ("Use of GIT_CONFIG_SYSTEM is not
+          # permitted without enabling allowUnsafeConfigPaths"), so default to the last working release.
+          gemini_cli_version: "${{ vars.GEMINI_CLI_VERSION || '0.68.0' }}"
           gemini_debug: '${{ fromJSON(vars.GEMINI_DEBUG || vars.ACTIONS_STEP_DEBUG || false) }}'
           gemini_model: '${{ vars.GEMINI_MODEL }}'
           google_api_key: '${{ secrets.GOOGLE_API_KEY }}'
