@@ -119,7 +119,7 @@ export class Pathfinder {
     // split by a wall falls through to the portal route instead.
     if (
       startSector.getId() === targetSector.getId() &&
-      this.reachableInSector(startSector, sLocalNe, sLocalSe).has(targetCostIdx)
+      this.reachableFrom(startSector, sLocalNe, sLocalSe)(targetCostIdx)
     ) {
       return this.getPathSingleSector(startSector, request);
     }
@@ -237,49 +237,47 @@ export class Pathfinder {
   }
 
   /**
-   * Cell indices reachable from a local cell inside the sector
-   * (4-connected flood fill over passable cells).
+   * Test for the cells reachable from a local cell inside the sector (over
+   * 4-connected passable cells): those in its area. A start on an impassable
+   * cell reaches itself and the areas of the passable cells next to it.
    */
-  private reachableInSector(sector: Sector, localNe: number, localSe: number): Set<number> {
-    const costField = sector.getCostField();
-    const size = costField.getSize();
-    const costs = costField.getCosts();
+  private reachableFrom(sector: Sector, localNe: number, localSe: number): (idx: number) => boolean {
+    const size = sector.getCostField().getSize();
+    const areas = sector.getAreas();
     const startIdx = xyToIndex(localNe, localSe, size);
-    const visited = new Set<number>([startIdx]);
-    const queue = [startIdx];
-
-    for (let i = 0; i < queue.length; i++) {
-      const idx = queue[i]!;
-      const x = idx % size;
-      const y = (idx - x) / size;
-      const neighbours = [
-        x > 0 ? idx - 1 : -1,
-        x < size - 1 ? idx + 1 : -1,
-        y > 0 ? idx - size : -1,
-        y < size - 1 ? idx + size : -1,
-      ];
-      for (const nIdx of neighbours) {
-        if (nIdx >= 0 && !visited.has(nIdx) && costs[nIdx] !== COST_IMPASSABLE) {
-          visited.add(nIdx);
-          queue.push(nIdx);
-        }
-      }
+    const area = areas[startIdx]!;
+    if (area !== 0) {
+      return idx => areas[idx] === area;
     }
 
-    return visited;
+    const around = new Set<number>();
+    if (localNe > 0) {
+      around.add(areas[startIdx - 1]!);
+    }
+    if (localNe < size - 1) {
+      around.add(areas[startIdx + 1]!);
+    }
+    if (localSe > 0) {
+      around.add(areas[startIdx - size]!);
+    }
+    if (localSe < size - 1) {
+      around.add(areas[startIdx + size]!);
+    }
+    around.delete(0);
+    return idx => idx === startIdx || around.has(areas[idx]!);
   }
 
   /** Portals of the sector whose entry cells are reachable from a local cell. */
   private portalsReachableFrom(sector: Sector, localNe: number, localSe: number): Portal[] {
     const size = sector.getCostField().getSize();
-    const reachable = this.reachableInSector(sector, localNe, localSe);
+    const reachable = this.reachableFrom(sector, localNe, localSe);
 
     return sector.getPortals().filter(portal => {
       const start = portal.getEntryStart(sector.getId());
       const end = portal.getEntryEnd(sector.getId());
       for (let y = start.se; y <= end.se; y++) {
         for (let x = start.ne; x <= end.ne; x++) {
-          if (reachable.has(xyToIndex(x, y, size))) {
+          if (reachable(xyToIndex(x, y, size))) {
             return true;
           }
         }

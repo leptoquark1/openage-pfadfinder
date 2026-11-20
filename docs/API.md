@@ -157,8 +157,11 @@ findPortals(                                     // portals on the shared edge w
   nextId: PortalId | (() => PortalId),           // first id, or an allocator called once per new portal
   reuse?: readonly Portal[],                     // existing portals to return again when they span a found range
 ): Portal[]
-connectExits();                                  // flood-fill passable exit cells across each portal into the other sector (4-connected)
+getAreas(): Uint16Array | Int32Array;            // area id per local cell: 4-connected passable cells share one (from 1), walls have 0
+connectExits();                                  // make portals exits of each other when their entry cells share an area
 ```
+
+`getAreas()` answers whether two cells of a sector reach each other inside it: they do exactly when they have the same area. The labels are computed on first use and again after the cost field changed (by its version), so asking is an array read; `connectExits()` and the pathfinder use them. Do not write to the returned array.
 
 #### Portal ids with `findPortals`
 
