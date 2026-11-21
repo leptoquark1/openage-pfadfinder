@@ -15,6 +15,10 @@ describe('planning performance', () => {
     for (let i = 0; i < 12; i++) {
       world.addMovingObstacle(((10 + i * 7) % cols) * CELL_SIZE + 16, ((10 + i * 5) % rows) * CELL_SIZE + 16);
     }
+    // Routes are planned for mobs, so the budget below needs a crowd.
+    for (let i = 0; i < 500; i++) {
+      world.addMob(((3 + i * 13) % cols) * CELL_SIZE + 16, ((3 + i * 7) % rows) * CELL_SIZE + 16);
+    }
 
     // Warm-up: first build plus enough ticks that the perf window (120
     // planning-tick samples) only covers steady state afterwards.
@@ -37,7 +41,7 @@ describe('planning performance', () => {
 
     // Baseline (full rebuild per tick): Grid ~12.7 ms, Flow ~14 ms — over
     // the 16.7 ms frame budget together. Incremental must land well below;
-    // Flow keeps the portal-route Dijkstra, so its budget is looser.
+    // Flow plans one route per occupied sector area, so its budget is looser.
     expect(grid!.avg).toBeGreaterThan(0);
     expect(grid!.avg).toBeLessThan(4);
     expect(flow!.avg).toBeLessThan(10);
