@@ -1,15 +1,6 @@
-// Benchmark: Grid#updateCosts, one call per tile vs. one batched call.
-// Runs against the built `dist/`. Usage, options and exit codes: docs/BENCHMARK.md
-//
-//   node scripts/bench.ts [then] [--json | --pretty | --silent]
-//   node scripts/bench.ts --docs [--json | --pretty | --silent]
-//
-// `then`: package dir, its `dist/`, or a published version (`latest`, `1.1.0`).
-// Exit codes: 0 ok, 1 Then is faster than Now, 2 wrong call or unloadable build.
-
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { arch, cpus, platform, tmpdir } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { arch, cpus, tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -20,6 +11,9 @@ const args = process.argv.slice(2);
 const IS_OUTPUT_JSON = args.includes('--json');
 const IS_OUTPUT_PRETTY = args.includes('--pretty');
 const IS_DOCS = args.includes('--docs');
+/** The docs block on stdout: like `--docs`, but combinable with `--full` and a Then build. */
+const IS_OUTPUT_MD = args.includes('--md');
+const IS_EXTENDED = IS_DOCS || args.includes('--full');
 const IS_SILENT = args.includes('--silent');
 
 /** Wrong call or unloadable build: exit 2, so 1 always means "Then is faster". */
@@ -28,13 +22,13 @@ const fail = (message: string): never => {
   process.exit(2);
 };
 
-const ROUNDS = 40;
+const ROUNDS = IS_EXTENDED ? 60 : 40;
 /** Ratios within ±5 % of 1 count as noise, for coloring and the exit code. */
 const NOISE = 0.05;
-const PRECISION = 3;
+const PRECISION = 2;
 const SECTOR_SIZE = 16;
-const SIZES = IS_DOCS ? [240, 64] : [128, 32];
-const CHANGES = IS_DOCS ? [100, 50, 10] : [30, 10];
+const SIZES = IS_EXTENDED ? [512, 240, 64] : [64, 32];
+const CHANGES = IS_EXTENDED ? [500, 100, 50, 10] : [35, 10];
 
 /** Accepts a package dir or its dist dir; relative paths resolve against the cwd. */
 const toDist = (dir: string): string => {
@@ -66,26 +60,78 @@ const PKG_NAME = (JSON.parse(readFileSync(resolve(PKG_DIR, 'package.json'), 'utf
 /** A Then argument that is no existing path but looks like this is fetched from npm. */
 const VERSION_RE = /^(?:latest|next|\d+\.\d+\.\d+(?:-[\w.]+)?)$/;
 
-/** Downloads a published version into a temp dir (removed on exit) and returns its dist dir. */
-const fetchRelease = (spec: string): { dir: string; label: string } => {
+const exec = (cmd: string, cmdArgs: string[], cwd = PKG_DIR) =>
+  execFileSync(cmd, cmdArgs, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    // npm and pnpm are .cmd scripts on Windows.
+    shell: process.platform === 'win32',
+  });
+
+/** Temp dir for a fetched Then build, removed on exit. */
+const tempDir = () => {
   const tmp = mkdtempSync(join(tmpdir(), 'pfadfinder-bench-'));
   process.on('exit', () => rmSync(tmp, { recursive: true, force: true }));
+  return tmp;
+};
+
+const errorDetail = (error: unknown) => (error as { stderr?: string }).stderr?.trim() || String(error);
+
+/** Downloads a published version into a temp dir and returns its dist dir. */
+const fetchRelease = (spec: string): { dir: string; label: string } => {
+  const tmp = tempDir();
 
   try {
-    const exec = (cmd: string, cmdArgs: string[]) =>
-      execFileSync(cmd, cmdArgs, {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        // npm is a .cmd script on Windows.
-        shell: process.platform === 'win32',
-      });
     const packed = JSON.parse(exec('npm', ['pack', `${PKG_NAME}@${spec}`, '--json', '--pack-destination', tmp]));
     const { filename, version } = (packed as { filename: string; version: string }[])[0]!;
     exec('tar', ['-xzf', join(tmp, filename), '-C', tmp]);
     return { dir: join(tmp, 'package', 'dist'), label: `${PKG_NAME}@${version}` };
   } catch (error) {
-    const detail = (error as { stderr?: string }).stderr?.trim() || String(error);
-    return fail(`Then version "${spec}" could not be fetched from npm:\n${detail}`);
+    return fail(`Then version "${spec}" could not be fetched from npm:\n${errorDetail(error)}`);
+  }
+};
+
+/** The commit of a branch, tag or (short) hash, or undefined if it is none. */
+const resolveRef = (ref: string): string | undefined => {
+  try {
+    return exec('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).trim();
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Exports this package at a commit into a temp dir and builds it there with
+ * this checkout's TypeScript. Only committed files count, local changes don't.
+ */
+const buildRef = (ref: string, commit: string): { dir: string; label: string } => {
+  const tmp = tempDir();
+  const hash = commit.slice(0, 7);
+  const label = commit.startsWith(ref) ? hash : `${ref} (${hash})`;
+  if (!IS_SILENT) {
+    console.error(`Building Then from ${label} …`);
+  }
+
+  try {
+    // The package dir in the repo, e.g. "packages/pfadfinder/"; its tree is archived at the root.
+    const prefix = exec('git', ['rev-parse', '--show-prefix']).trim();
+    const pkg = join(tmp, 'package');
+    mkdirSync(pkg);
+    // From a subdir, git archive would limit even a tree to that subdir.
+    const root = exec('git', ['rev-parse', '--show-toplevel']).trim();
+    try {
+      exec('git', ['cat-file', '-e', `${commit}:${prefix}tsconfig.build.json`], root);
+    } catch {
+      return fail(`Then ref "${ref}" has no buildable package at ${prefix}, try its npm version instead`);
+    }
+    exec('git', ['archive', '--format=tar', '-o', join(tmp, 'src.tar'), `${commit}:${prefix}`], root);
+    exec('tar', ['-xf', join(tmp, 'src.tar'), '-C', pkg]);
+    exec('pnpm', ['exec', 'tsc', '-p', join(pkg, 'tsconfig.build.json')]);
+    return { dir: join(pkg, 'dist'), label };
+  } catch (error) {
+    const detail = (error as { stdout?: string }).stdout?.trim() || errorDetail(error);
+    return fail(`Then ref "${ref}" could not be built:\n${detail}`);
   }
 };
 
@@ -113,8 +159,19 @@ const docsTemplate = (() => {
 })();
 
 const nowDir = toDist(PKG_DIR);
-const release =
-  thenArg !== undefined && !existsSync(thenArg) && VERSION_RE.test(thenArg) ? fetchRelease(thenArg) : undefined;
+/** Then, unless it is an existing path: a published version first, then a git ref. */
+const release = (() => {
+  if (thenArg === undefined || existsSync(thenArg)) {
+    return undefined;
+  }
+  if (VERSION_RE.test(thenArg)) {
+    return fetchRelease(thenArg);
+  }
+  const commit = resolveRef(thenArg);
+  return commit
+    ? buildRef(thenArg, commit)
+    : fail(`Then "${thenArg}" is no path, published version (latest, 1.1.0, …) or git ref`);
+})();
 const thenDir = release?.dir ?? (thenArg === undefined ? undefined : toDist(thenArg));
 
 const now = await load('Now', nowDir);
@@ -122,7 +179,7 @@ const then = thenDir === undefined || thenDir === nowDir ? undefined : await loa
 const builds = then ? [then, now] : [now];
 
 // Keep stdout pure JSON with `--json`.
-const log = IS_SILENT ? () => {} : IS_OUTPUT_JSON ? console.error : console.log;
+const log = IS_SILENT ? () => {} : IS_OUTPUT_JSON || IS_OUTPUT_MD ? console.error : console.log;
 
 log(then ? `Benchmark (Now: ${now.label} vs. Then: ${then.label})` : `Benchmark (${now.label})`);
 log();
@@ -139,6 +196,19 @@ const spinner = (() => {
   let frame = 0;
   let last = 0;
   let label = '';
+  /** `performance.now()` at which the run is expected to end, if known. */
+  let deadline: number | undefined;
+
+  /** E.g. "~1m 05s left"; seconds only below a minute, "estimating…" until known. */
+  const countdown = (t: number) => {
+    let text = 'estimating…';
+    if (deadline !== undefined) {
+      const sec = Math.max(0, Math.ceil((deadline - t) / 1000));
+      text = `~${sec < 60 ? `${sec}s` : `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s`} left`;
+    }
+    // Indented below the label, past the spinner symbol.
+    return ERR_COLOR ? `  \x1b[2m${text}\x1b[0m` : `  ${text}`;
+  };
 
   const draw = (force: boolean) => {
     const t = performance.now();
@@ -147,16 +217,19 @@ const spinner = (() => {
     }
     last = t;
     const symbol = FRAMES[frame++ % FRAMES.length]!;
-    process.stderr.write(`\r\x1b[2K${ERR_COLOR ? `\x1b[36m${symbol}\x1b[0m` : symbol} ${label}`);
+    const status = `${ERR_COLOR ? `\x1b[36m${symbol}\x1b[0m` : symbol} ${label}`;
+    // Two lines: status, then the countdown; the cursor goes back to the first line.
+    process.stderr.write(`\r\x1b[2K${status}\n\x1b[2K${countdown(t)}\x1b[1A\r`);
   };
 
   return {
-    set: (text: string) => {
+    set: (text: string, end?: number) => {
       label = text;
+      deadline = end;
       draw(true);
     },
     tick: () => draw(false),
-    stop: () => enabled && process.stderr.write('\r\x1b[2K'),
+    stop: () => enabled && process.stderr.write('\r\x1b[2K\n\x1b[2K\x1b[1A\r'),
   };
 })();
 
@@ -216,13 +289,57 @@ const MODE_LABEL: Record<Mode, string> = { single: 'Single', batched: 'Batched' 
 const TOTAL = SIZES.length * CHANGES.length * builds.length * MODES.length;
 let step = 0;
 
+/**
+ * Rough relative cost of one timed step, fitted to the `--docs` run: single
+ * calls grow linearly with the changes, one batched call clearly less.
+ */
+const stepWeight = (size: number, n: number, mode: Mode) =>
+  mode === 'single' ? n * size ** 1.3 : n ** 0.65 * size ** 1.45;
+
+/**
+ * Remaining-time estimate: the time spent per weight unit so far, per mode,
+ * times the weight still to run. Unknown until both modes ran once.
+ */
+const eta = (() => {
+  const spent: Record<Mode, number> = { single: 0, batched: 0 };
+  const done: Record<Mode, number> = { single: 0, batched: 0 };
+  const left: Record<Mode, number> = { single: 0, batched: 0 };
+  for (const size of SIZES) {
+    for (const n of CHANGES) {
+      for (const mode of MODES) {
+        left[mode] += stepWeight(size, n, mode) * builds.length;
+      }
+    }
+  }
+  let current: { mode: Mode; weight: number; t0: number } | undefined;
+
+  /** Starts a step and returns the expected end of the whole run. */
+  return (size: number, n: number, mode: Mode): number | undefined => {
+    const t = performance.now();
+    if (current) {
+      spent[current.mode] += t - current.t0;
+      done[current.mode] += current.weight;
+      left[current.mode] -= current.weight;
+    }
+    current = { mode, weight: stepWeight(size, n, mode), t0: t };
+
+    if (MODES.some(m => done[m] === 0)) {
+      return undefined;
+    }
+    return t + MODES.reduce((sum, m) => sum + (left[m] * spent[m]) / done[m], 0);
+  };
+})();
+
 const round = (v: number, digits = PRECISION) => +v.toFixed(digits);
 
 /** Both modes on one build; the seed is reset so every build sees the same tile picks. */
 const measure = (build: Build, costs: Uint8Array, size: number, n: number, caseSeed: number): Timing => {
   const grid = build.lib.buildGrid(costs.slice(), { width: size, height: size }, SECTOR_SIZE, 0);
   const timed = (mode: Mode) => {
-    spinner.set(`[${++step}/${TOTAL}] ${size}×${size} · ${n} changes · ${build.name} · ${MODE_LABEL[mode]}`);
+    spinner.set(
+      `[${++step}/${TOTAL}] ${size}×${size} · ${n} changes · ${build.name} · ${MODE_LABEL[mode]}`,
+      eta(size, n, mode),
+    );
     seed = caseSeed;
     return run(grid, costs, size, n, mode === 'batched');
   };
@@ -230,7 +347,7 @@ const measure = (build: Build, costs: Uint8Array, size: number, n: number, caseS
   const single = timed('single');
   const batched = timed('batched');
 
-  return { single: round(single), batched: round(batched), factor: round(single / batched, 2) };
+  return { single: round(single), batched: round(batched), factor: round(single / batched) };
 };
 
 type Result = { map: number; changes: number; timings: Record<string, Timing> };
@@ -253,7 +370,7 @@ for (const b of builds) {
 }
 seed = warmupSeed;
 
-for (const size of SIZES) {
+for (const size of SIZES.toReversed()) {
   for (const changes of CHANGES) {
     const costs = new Uint8Array(size * size).map(() => (rnd() < 0.15 ? COST_IMPASSABLE : COST_MIN));
     const caseSeed = seed;
@@ -269,7 +386,7 @@ for (const size of SIZES) {
 
 spinner.stop();
 
-const speedup = (r: Result, mode: Mode) => round(r.timings.Then![mode] / r.timings.Now![mode], 2);
+const speedup = (r: Result, mode: Mode) => round(r.timings.Then![mode] / r.timings.Now![mode]);
 
 // ---------------------------------------------------------------- output
 
@@ -288,15 +405,24 @@ const colorRatio = (ratio: number): Style => (ratio >= 1 + NOISE ? green : ratio
 
 /** A matrix row: one per map size, split by mode when two builds are compared. */
 type Row = { map: number; mode?: Mode };
-type Cell = { text: string; style: Style };
+/** `md`: the value with HTML for Markdown; `text` stays plain for the terminal. */
+type Cell = { text: string; style: Style; md?: string };
 /** `changes` set: a value column inside that column group; unset: a leading label column. */
 type Column = { header: string; changes?: number; cell: (row: Row) => Cell };
 
 const rows: Row[] = then ? SIZES.flatMap(map => MODES.map(mode => ({ map, mode }))) : SIZES.map(map => ({ map }));
 
 const resultOf = (map: number, changes: number) => results.find(r => r.map === map && r.changes === changes)!;
-const ms = (v: number): Cell => ({ text: `${v.toFixed(PRECISION)} ms`, style: plain });
-const ratio = (v: number): Cell => ({ text: `${v.toFixed(2)}×`, style: colorRatio(v) });
+const ms = (v: number): Cell => ({
+  text: `${v.toFixed(PRECISION)} ms`,
+  md: `${v.toFixed(PRECISION)}&#x2009;<small>ms</small>`,
+  style: plain,
+});
+const ratio = (v: number): Cell => ({
+  text: `${v.toFixed(PRECISION)}×`,
+  md: `${v.toFixed(PRECISION)}&#x2009;<small>×</small>&nbsp;`,
+  style: colorRatio(v),
+});
 
 const valueColumns = (changes: number): Column[] => {
   const at = (row: Row) => resultOf(row.map, changes);
@@ -334,14 +460,16 @@ const median = (values: number[]): number => {
 const ratios = then
   ? results.flatMap(r => MODES.map(mode => speedup(r, mode)))
   : results.map(r => r.timings.Now!.factor);
-const MEDIAN = round(median(ratios), 2);
+const MEDIAN = round(median(ratios));
 
 /** E.g. "Now is 1.12× faster than Then"; below 1 the inverse is reported as slower. */
-const summary = (() => {
+const summaryHead = (() => {
   const [subject, other] = then ? ['Now', 'Then'] : ['Batching', 'single calls'];
-  const verdict = MEDIAN >= 1 ? `${MEDIAN.toFixed(2)}× faster` : `${(1 / MEDIAN).toFixed(2)}× slower`;
-  return `${subject} is ${verdict} than ${other} (median of ${ratios.length} cases)`;
+  const verdict = MEDIAN >= 1 ? `${MEDIAN.toFixed(PRECISION)}× faster` : `${(1 / MEDIAN).toFixed(PRECISION)}× slower`;
+  return `${subject} is ${verdict} than ${other}`;
 })();
+const summaryDetail = `(median of ${ratios.length} cases)`;
+const summary = `${summaryHead} ${summaryDetail}`;
 
 const legend = then
   ? `Time per update pass, ${ROUNDS} rounds · Speedup = Then / Now`
@@ -414,20 +542,55 @@ const pretty = (): string => {
   return out.join('\n');
 };
 
-/** GitHub-flavored Markdown matrix; the group goes into each header as `(changes)`. */
-const markdown = (): string =>
-  [
-    `| ${columns.map(c => (isLabel(c) ? c.header : `${c.header} (${c.changes})`)).join(' | ')} |`,
-    `| ${columns.map(c => (isLabel(c) ? ':---' : '---:')).join(' | ')} |`,
-    ...rows.map((row, i) => {
-      const values = columns.map(c => c.cell(row).text);
-      return `| ${(then && !firstOfMap(i) ? ['', ...values.slice(1)] : values).join(' | ')} |`;
-    }),
+const MD_KEYS = then ? ['◁', '▷', '×'] : ['•', '⇉', '×'];
+const MD_RULE = '⎯⎯⎯&nbsp;&nbsp;';
+
+const markdown = (): string => {
+  const [keyA, keyB, keyRatio] = MD_KEYS;
+  const label = (row: Row) => {
+    const name = `**${row.map}×${row.map}**${row.mode ? ` · ${MODE_LABEL[row.mode]}` : ''}`;
+    const keys = `${keyA}<br/>${keyB}<br/><br/>${keyRatio}`;
+    return `<div align="left">${name}</div><div align="right">${keys}</div>`;
+  };
+  const cell = (row: Row, changes: number) => {
+    const [a, b, r] = valueColumns(changes).map(c => {
+      const value = c.cell(row);
+      return value.md ?? value.text;
+    });
+    return `<br/>${a}<br/>${b}<br/>${MD_RULE}<br/>${r}`;
+  };
+  /** Quoted key line; the source lines join into one paragraph, spaced by `&nbsp;`. */
+  const keyLegend = [
+    ['Δ', 'Changes per pass'],
+    ['↔', 'Map size'],
+    ...(then
+      ? [
+          [keyA, 'Then'],
+          [keyB, 'Now'],
+          [keyRatio, 'Speedup'],
+        ]
+      : [
+          [keyA, 'Single'],
+          [keyB, 'Batched'],
+          [keyRatio, 'Factor'],
+        ]),
+  ]
+    .map(([key, text]) => `> **${key}** &nbsp; <small>_${text}_</small>`)
+    .join(`${'&nbsp;'.repeat(4)}\n`);
+  const corner = '**<div align="right">Δ</div><div align="left">&nbsp;↔</div>**';
+
+  return [
+    `Time per update pass, **${ROUNDS} rounds**`,
+    ``,
+    `| ${corner} | ${CHANGES.map(n => `**${n}**<br><br>`).join(' | ')} |`,
+    `| :--- | ${CHANGES.map(() => '---:').join(' | ')} |`,
+    ...rows.map(row => `| ${[label(row), ...CHANGES.map(n => cell(row, n))].join(' | ')} |`),
+    ``,
+    `**${summaryHead}** <small>${summaryDetail}</small>`,
     '',
-    `**${summary}**`,
-    '',
-    `${legend} · (n) = changes per pass`,
+    keyLegend,
   ].join('\n');
+};
 
 const json = (): unknown => {
   if (!then) {
@@ -449,18 +612,15 @@ const json = (): unknown => {
   };
 };
 
-/** Generated docs block: what ran where, then the Markdown matrix. */
+/** Generated docs block: what ran where (and which builds, when comparing), then the Markdown matrix. */
 const docs = (): string => {
-  const env = [
-    new Date().toISOString().slice(0, 10),
-    `Node ${process.version}`,
-    `${platform()} ${arch()}`,
-    cpus()[0]?.model.trim(),
-  ]
+  const env = [`Node ${process.version.split('.')[0]}`, cpus()[0]?.model.replace('Processor', '').trim(), `${arch()}`]
     .filter(Boolean)
     .join(' · ');
 
-  return `\n_${env}_\n\nBuild: \`${relative(PKG_DIR, now.dir)}\`\n\n${markdown()}\n`;
+  const compared = then ? `Then: \`${then.label}\` · Now: \`${now.label}\`\n\n` : '';
+
+  return `\nHost: _${env}_\n\n${compared}${markdown()}\n`;
 };
 
 if (docsTemplate) {
@@ -471,7 +631,14 @@ if (docsTemplate) {
 }
 
 if (!IS_SILENT) {
-  console.log(IS_OUTPUT_JSON ? JSON.stringify(json(), undefined, 2) : IS_OUTPUT_PRETTY ? pretty() : markdown());
+  const output = IS_OUTPUT_JSON
+    ? JSON.stringify(json(), undefined, 2)
+    : IS_OUTPUT_PRETTY
+      ? pretty()
+      : IS_OUTPUT_MD
+        ? docs().trim()
+        : markdown();
+  console.log(output);
 }
 
 // Fail the comparison when Then is faster beyond noise, e.g. for CI.
