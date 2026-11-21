@@ -41,7 +41,7 @@ function budgetColor(ms: number): string {
  * Live timing readout for the playground: frame budget, the phases the
  * simulation spends it in, and the size of the structures behind them.
  *
- * Grid rebuild and flow-field integration run on the 10 Hz planning tick, not
+ * Grid rebuild and route planning run on the 10 Hz planning tick, not
  * every frame — their "/s" column says how often they actually ran, which is
  * what makes their millisecond cost comparable to the per-frame phases.
  */

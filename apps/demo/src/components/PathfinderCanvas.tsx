@@ -394,17 +394,17 @@ function drawSectorBorders(ctx: CanvasRenderingContext2D, grid: Grid, width: num
   ctx.stroke();
 }
 
-/** Real per-sector flow fields — one short stroke per pathable cell. */
+/** The library's flow fields of the routes in use — one short stroke per pathable cell. */
 function drawFlowField(ctx: CanvasRenderingContext2D, world: World, grid: Grid): void {
-  const fields = world.getFlowFields();
+  const fields = world.getFlowOverlay();
   if (fields.size === 0) {
     return;
   }
 
   ctx.lineWidth = 1;
   for (const sector of grid.getSectors()) {
-    const flow = fields.get(sector.getId());
-    if (!flow) {
+    const cells = fields.get(sector.getId());
+    if (!cells) {
       continue;
     }
 
@@ -414,7 +414,7 @@ function drawFlowField(ctx: CanvasRenderingContext2D, world: World, grid: Grid):
 
     for (let y = 0; y < SECTOR_SIZE; y++) {
       for (let x = 0; x < SECTOR_SIZE; x++) {
-        const cell = flow.cells[x + y * SECTOR_SIZE]!;
+        const cell = cells[x + y * SECTOR_SIZE]!;
         if ((cell & FLOW_PATHABLE_MASK) === 0) {
           continue;
         }
@@ -503,7 +503,7 @@ function drawTarget(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.fill();
 }
 
-/** The cells each mob will pass through, traced along the flow fields. */
+/** The cells each mob will pass through, traced along its route. */
 function drawTraces(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.strokeStyle = COLORS.mob;
   ctx.globalAlpha = 0.35;

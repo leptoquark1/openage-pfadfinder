@@ -828,12 +828,22 @@ Some public members are no longer used by the library code. Removing them would 
 
 ## 10. The demo as a reference consumer
 
-`apps/demo` shows the library under load. Its `World` class does **not** use `Pathfinder`, but the lower-level building
-blocks: `buildGrid`, `Grid.updateCosts`, `Integrator.get` and `BinaryHeap`.
+`apps/demo` shows the library under load and plans **no routes of its own**. Both of its parts go through the public
+API:
 
-The reason is the question being asked. `portalAStar()` answers "Which route leads from A to B?". For **one** shared
-target, the demo needs the best exit of **every** sector. It gets them from a single backward Dijkstra search from the
-target over the portal graph (`routeCostsToTarget`).
+- The **playground** (`World`) keeps one global cost layer, syncs it with `buildGrid` and `Grid.updateCosts`, and gets
+  every route from `Pathfinder.getFlowRoute()`.
+- The **guide** runs the real `Pathfinder` and `portalAStar` and records what they do. Its tests compare the recordings
+  with the library.
+
+Mobs standing in the same walkable area of a sector (`Sector.getAreas()`) share one `FlowRoute`, planned for the first
+mob that asks for it. Each mob then gets its next cell from `FlowRoute.next()`, and a mob pushed off its route switches
+to the route of the area it stands in. After a change to the target or the costs, the next planning tick assigns every
+mob a route again. Sectors whose costs stayed the same reuse their cached fields.
+
+What stays in the demo is the simulation around the routes: walls, labyrinths, moving obstacles, mob movement and local
+avoidance. A mob counts as blocked when the library has no route for it. The flow overlay draws the fields of the routes
+in use, so sectors no mob's route passes through show no arrows.
 
 ```mermaid
 flowchart TD
@@ -848,14 +858,15 @@ flowchart TD
     subgraph World["World"]
         Obstacles["moveObstacles()"] --> Plan{"100 ms since<br/>last planning?"}
         Plan -- yes --> Rebuild["rebuildGrid()<br/>only after changes"]
-        Rebuild --> Flows["refreshFlowFields()<br/>backward Dijkstra, integration"]
-        Flows --> Trace["traceMob()<br/>at most 12 per tick"]
+        Rebuild --> Routes["refreshRoutes()<br/>one route per sector area"]
+        Routes --> Trace["traceMob()<br/>at most 12 per tick"]
         Trace --> Mobs["moveMobs()"]
         Plan -- no --> Mobs
     end
 
-    Rebuild -. updateCosts .-> Library["openage-pfadfinder"]
-    Flows -. "Integrator.get, BinaryHeap" .-> Library
+    Rebuild -. "buildGrid, updateCosts" .-> Library["openage-pfadfinder"]
+    Routes -. "Pathfinder.getFlowRoute" .-> Library
+    Mobs -. "FlowRoute.next" .-> Library
 ```
 
 ## 11. Build, quality and release

@@ -2,8 +2,8 @@
  * Rolling timing statistics for the playground.
  *
  * The simulation runs two clocks: every frame moves obstacles and mobs, while
- * the planning tick (10 Hz) rebuilds the grid and re-integrates the flow
- * fields. A single average would blend both, so every phase is measured
+ * the planning tick (10 Hz) rebuilds the grid and plans the routes again.
+ * A single average would blend both, so every phase is measured
  * separately and reported with how often it actually ran — a phase costing
  * 4 ms ten times a second is a very different budget than 4 ms every frame.
  */

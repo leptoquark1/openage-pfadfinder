@@ -1,16 +1,6 @@
-import type { Portal } from '@leptoquark1/openage-pfadfinder';
-import { BinaryHeap, type Grid, Integrator, type Sector } from '@leptoquark1/openage-pfadfinder';
-import type { PortalId, SectorId, TileDelta, Waypoint } from '@leptoquark1/openage-pfadfinder/shared';
-import {
-  buildGrid,
-  COST_IMPASSABLE,
-  COST_MIN,
-  FLOW_DIR_MASK,
-  FLOW_PATHABLE_MASK,
-  FlowDir,
-  PortalDirection,
-  tileEuclidean,
-} from '@leptoquark1/openage-pfadfinder/shared';
+import { type FlowField, type FlowRoute, type Grid, Pathfinder, type Sector } from '@leptoquark1/openage-pfadfinder';
+import type { SectorId, Waypoint } from '@leptoquark1/openage-pfadfinder/shared';
+import { buildGrid, COST_IMPASSABLE, COST_MIN, FLOW_PATHABLE_MASK } from '@leptoquark1/openage-pfadfinder/shared';
 import { PerfMeter } from './perf.js';
 
 /** Edge length of one grid cell in CSS pixels. */
@@ -18,18 +8,6 @@ export const CELL_SIZE = 32;
 
 /** Cells per sector edge — the subdivision the portal graph is built on. */
 export const SECTOR_SIZE = 8;
-
-/** Cell delta per flow direction, matching `FlowField.build()`. */
-const FLOW_DELTAS: Record<number, readonly [number, number]> = {
-  [FlowDir.NORTH]: [0, -1],
-  [FlowDir.NORTH_EAST]: [1, -1],
-  [FlowDir.EAST]: [1, 0],
-  [FlowDir.SOUTH_EAST]: [1, 1],
-  [FlowDir.SOUTH]: [0, 1],
-  [FlowDir.SOUTH_WEST]: [-1, 1],
-  [FlowDir.WEST]: [-1, 0],
-  [FlowDir.NORTH_WEST]: [-1, -1],
-};
 
 /** A unit steered by the flow fields towards the target. */
 export interface Mob {
@@ -40,11 +18,13 @@ export interface Mob {
   readonly spawnY: number;
   /** Individual travel speed in px/s, drawn at spawn time. */
   readonly speed: number;
-  /** Cells the mob will pass through, traced along the flow fields. */
+  /** Cells the mob will pass through, traced along its route. */
   trace: Waypoint[];
   /** World version the trace was built against; -1 forces a refresh. */
   traceVersion: number;
-  /** True when the flow fields offer no route to the target. */
+  /** The library's route this mob follows, shared within its group; null without one. */
+  route: FlowRoute | null;
+  /** True when the library has no route to the target for this mob. */
   blocked: boolean;
 }
 
@@ -69,28 +49,6 @@ export interface MovingObstacle {
   headingToB: boolean;
 }
 
-/** The flow fields of one sector, merged across its walkable components. */
-export interface SectorFlow {
-  /** Raw `FlowField` cells, local to the sector. */
-  readonly cells: Uint8Array;
-  /**
-   * Portal crossings at the sinks of the fields, by local cell index. A field
-   * converges on its sink; leaving the sector is a step no direction inside
-   * the field encodes.
-   */
-  readonly exits: Map<number, readonly [number, number]>;
-  /**
-   * Integration sink per component (component id → local cell index, -1 when
-   * no route to the target exists). Two flows with equal sinks are equal, so
-   * this is what makes a cached field reusable.
-   */
-  readonly sinks: ReadonlyMap<number, number>;
-  /** `CostField` version of the sector the cells were integrated against. */
-  readonly costVersion: number;
-  /** Components version of the sector the cells were integrated against. */
-  readonly componentsVersion: number;
-}
-
 export interface WorldStats {
   readonly mobs: number;
   readonly obstacles: number;
@@ -98,14 +56,11 @@ export interface WorldStats {
   readonly hasTarget: boolean;
 }
 
-/** Milliseconds between planning ticks — grid rebuild plus flow-field refresh. */
+/** Milliseconds between planning ticks — grid rebuild plus route refresh. */
 const PLAN_INTERVAL_MS = 100;
 
 /** Mob traces refreshed per planning tick, so a large crowd spreads over ticks. */
 const TRACES_PER_TICK = 12;
-
-/** Cells a single trace follows before giving up on reaching the target. */
-const MAX_TRACE_LENGTH = 256;
 
 const MOB_SPEED_MIN = 70; // px/s
 const MOB_SPEED_MAX = 160; // px/s
@@ -140,11 +95,11 @@ const MAZE_ROOM_MAX = 3;
  * layer changes — portals are derived from cost fields, so they have to be
  * re-derived rather than patched.
  *
- * Mobs are steered by flow fields, not by a per-mob path: every walkable
- * component of every sector gets one field, integrated towards the target if it
- * holds the target, otherwise towards the portal that starts the cheapest route
- * to it. That is the field a crowd follows, and it is the same data the Flow
- * overlay draws.
+ * Route planning is entirely the library's job. Mobs standing in the same
+ * walkable area of a sector share one `FlowRoute` from
+ * `Pathfinder.getFlowRoute()` and ask it for their next cell; the Flow overlay
+ * draws the fields of exactly those routes. The world only decides when to
+ * plan again and moves the mobs.
  */
 export class World {
   private sectorsX = 0;
@@ -166,7 +121,7 @@ export class World {
   private dynamicCost = new Uint8Array(0);
 
   private grid: Grid | null = null;
-  private readonly integrator = new Integrator();
+  private readonly pathfinder = new Pathfinder();
 
   private target: Waypoint | null = null;
   private readonly mobs: Mob[] = [];
@@ -175,7 +130,7 @@ export class World {
   /** First endpoint of the patrol route being placed — pending until the second click. */
   private patrolAnchor: { x: number; y: number } | null = null;
 
-  /** Bumped whenever anything invalidates the flow fields. */
+  /** Bumped whenever anything invalidates the routes. */
   private version = 0;
   private costDirty = true;
   private lastPlanMs = 0;
@@ -188,13 +143,13 @@ export class World {
   /** True when the next planning tick must rebuild the whole grid, not just dirty sectors. */
   private gridDirtyAll = true;
 
-  /** One flow field per sector, keyed by sector id. */
-  private readonly flowFields: Map<SectorId, SectorFlow> = new Map();
-  /** Walkable components per sector, rebuilt together with the grid. */
-  private readonly sectorComponents: Map<SectorId, SectorComponents> = new Map();
-  /** World version at which each sector's components were last computed. */
-  private readonly sectorComponentsVersion: Map<SectorId, number> = new Map();
-  private flowVersion = -1;
+  /** Shared route per walkable sector area (null: none exists), for the current plan. */
+  private readonly routes: Map<number, FlowRoute | null> = new Map();
+  /** World version the routes were planned against. */
+  private routeVersion = -1;
+  /** Merged flow cells of the routes in use, rebuilt on demand for the overlay. */
+  private readonly flowOverlay: Map<SectorId, Uint8Array> = new Map();
+  private flowOverlayStale = true;
 
   /** Pulse phase for the target ring, advanced by `step()`. */
   private elapsedMs = 0;
@@ -230,9 +185,51 @@ export class World {
     return this.staticCost;
   }
 
-  /** Flow field per sector — the data behind both steering and the overlay. */
-  getFlowFields(): ReadonlyMap<SectorId, SectorFlow> {
-    return this.flowFields;
+  /**
+   * Flow cells of the routes the mobs currently follow, per sector. Where
+   * several routes cover a cell, the first one wins.
+   */
+  getFlowOverlay(): ReadonlyMap<SectorId, Uint8Array> {
+    if (this.flowOverlayStale) {
+      this.flowOverlayStale = false;
+      this.flowOverlay.clear();
+      const fields = new Set<FlowField>();
+      for (const route of this.activeRoutes()) {
+        for (const { sector, flowField } of route.getSteps()) {
+          if (fields.has(flowField)) {
+            continue;
+          }
+          fields.add(flowField);
+          let cells = this.flowOverlay.get(sector.getId());
+          if (!cells) {
+            cells = new Uint8Array(SECTOR_SIZE * SECTOR_SIZE);
+            this.flowOverlay.set(sector.getId(), cells);
+          }
+          const source = flowField.getCells();
+          for (let i = 0; i < cells.length; i++) {
+            if ((cells[i]! & FLOW_PATHABLE_MASK) === 0) {
+              cells[i] = source[i]!;
+            }
+          }
+        }
+      }
+    }
+    return this.flowOverlay;
+  }
+
+  /** The distinct routes the mobs currently follow. */
+  getActiveRoutes(): readonly FlowRoute[] {
+    return [...this.activeRoutes()];
+  }
+
+  private activeRoutes(): Set<FlowRoute> {
+    const routes = new Set<FlowRoute>();
+    for (const mob of this.mobs) {
+      if (mob.route) {
+        routes.add(mob.route);
+      }
+    }
+    return routes;
   }
 
   getElapsedMs(): number {
@@ -775,6 +772,7 @@ export class World {
       speed: MOB_SPEED_MIN + Math.random() * (MOB_SPEED_MAX - MOB_SPEED_MIN),
       trace: [],
       traceVersion: -1,
+      route: null,
       blocked: false,
     });
   }
@@ -1055,7 +1053,7 @@ export class World {
 
   /**
    * Advance the simulation. Movement runs every frame; grid rebuild and
-   * flow-field refresh run on the slower planning tick.
+   * route refresh run on the slower planning tick.
    */
   step(dtMs: number, nowMs: number): void {
     const dt = Math.min(dtMs, 50) / 1000;
@@ -1078,7 +1076,7 @@ export class World {
   }
 
   /**
-   * Mark a cell range as changed and invalidate the flow fields. The range
+   * Mark a cell range as changed and invalidate the routes. The range
    * is accumulated across frames and consumed by the planning tick, which
    * rebuilds only the sectors under it.
    */
@@ -1290,7 +1288,8 @@ export class World {
       this.perf.end('Grid');
     }
 
-    this.refreshFlowFields();
+    this.refreshRoutes();
+    this.flowOverlayStale = true;
 
     this.updateGraphCounters();
 
@@ -1364,7 +1363,8 @@ export class World {
 
     // Hand every cell of the dirty sectors to the grid. updateCosts writes
     // only cells whose cost differs, through setCost(), so each touched
-    // CostField bumps its version; sectors left unchanged keep theirs.
+    // CostField bumps its version; sectors left unchanged keep theirs, and
+    // with it the fields the pathfinder has cached for them.
     const rect = this.dirtyRectOf(dirtySectors);
     const changes: { ne: number; se: number; cost: number }[] = [];
     for (let se = rect.minSe; se <= rect.maxSe; se++) {
@@ -1372,32 +1372,19 @@ export class World {
         changes.push({ ne, se, cost: this.dynamicCost[ne + se * this.cols]! });
       }
     }
-    const changed = this.grid.updateCosts(changes);
-
-    // Components only shift inside the sectors whose costs changed, but a
-    // portal change also alters which component a neighbor's portal sits
-    // in — recompute components for every sector the update touched.
-    for (const id of changed) {
-      const sector = this.grid.getSector(id);
-      if (sector) {
-        this.computeSectorComponents(sector);
-      }
-    }
+    this.grid.updateCosts(changes);
   }
 
-  /** Build the initial grid: full cost copy, portals, components, portal nodes. */
+  /** Build the initial grid: full cost copy, portals, portal nodes. */
   private restampAndBuildFullGrid(): void {
     this.dynamicCost.set(this.staticCost);
     this.stampObstacles();
 
     const grid = buildGrid(this.dynamicCost, { width: this.cols, height: this.rows }, SECTOR_SIZE);
-    this.sectorComponents.clear();
-    for (const sector of grid.getSectors()) {
-      this.computeSectorComponents(sector);
-    }
-    // Cached flows refer to the old grid's cost fields, whose versions the
-    // fresh ones restart from — never reuse them.
-    this.flowFields.clear();
+    // Replaces the previous grid, which has the same id; routes planned on it
+    // are dropped with it.
+    this.pathfinder.addGrid(grid);
+    this.routes.clear();
     this.grid = grid;
   }
 
@@ -1447,30 +1434,6 @@ export class World {
     return { minNe, minSe, maxNe, maxSe };
   }
 
-  /**
-   * Recompute the walkable components of one sector: each one gets its own
-   * flow field. Portal exits need no patching, `Sector.connectExits()`
-   * already links only portals that reach each other inside the sector.
-   */
-  private computeSectorComponents(sector: Sector): void {
-    const portals = sector.getPortals();
-    const cells = componentsOf(sector.getCostField().getCosts());
-    const portalComponent: Map<PortalId, number> = new Map();
-
-    for (const portal of portals) {
-      for (const cell of entryCells(sector.getId(), portal)) {
-        const component = cells[cell.ne + cell.se * SECTOR_SIZE]!;
-        if (component >= 0) {
-          portalComponent.set(portal.getId(), component);
-          break;
-        }
-      }
-    }
-
-    this.sectorComponents.set(sector.getId(), { cells, portalComponent });
-    this.sectorComponentsVersion.set(sector.getId(), this.version);
-  }
-
   /** True when any cell covered by the obstacle's bounding box is a wall. */
   private hitsWall(px: number, py: number): boolean {
     const half = OBSTACLE_SIZE / 2;
@@ -1505,152 +1468,80 @@ export class World {
   }
 
   /**
-   * Integrate the flow fields every mob follows: one per walkable component of
-   * every sector. The component holding the target flows towards it, all
-   * others towards the portal that starts their cheapest route to it.
-   *
-   * Every sector is revisited: a target move or a portal change anywhere can
-   * flip which exit is cheapest in a sector far from the change. That is
-   * cheap — `buildSectorFlow` re-integrates only components whose sink,
-   * cost field or components changed, and keeps the cells of the rest.
+   * Plan again after anything changed: every mob gets the route of the sector
+   * area it stands in. The pathfinder reuses its cached fields for all sectors
+   * whose costs stayed the same.
    */
-  private refreshFlowFields(): void {
+  private refreshRoutes(): void {
     // Timed inside the guard: an unchanged version does no work, and
-    // sampling that would average the real integration cost away.
-    if (this.flowVersion === this.version) {
+    // sampling that would average the real planning cost away.
+    if (this.routeVersion === this.version) {
       return;
     }
     this.perf.begin('Flow');
-    this.flowVersion = this.version;
-    let integrations = 0;
+    this.routeVersion = this.version;
+    this.routes.clear();
 
-    const grid = this.grid;
-    const target = this.target;
-    if (!grid || !target) {
-      this.flowFields.clear();
-      this.perf.end('Flow');
-      this.perf.setCounter('Fields', 0);
-      return;
+    for (const mob of this.mobs) {
+      const cell = this.cellAt(mob.x, mob.y);
+      mob.route = cell ? this.routeAt(cell) : null;
     }
-
-    const targetSector = grid.getSectorAt(target.ne, target.se);
-    if (!targetSector) {
-      this.flowFields.clear();
-      this.perf.end('Flow');
-      this.perf.setCounter('Fields', 0);
-      return;
-    }
-
-    const targetLocal = grid.globalToLocal(target.ne, target.se);
-    const targetIdx = targetLocal.localNe + targetLocal.localSe * SECTOR_SIZE;
-    const targetComponent = this.sectorComponents.get(targetSector.getId())?.cells[targetIdx] ?? -1;
-    const routeCosts = routeCostsToTarget(grid, targetSector, target, portal => {
-      return this.sectorComponents.get(targetSector.getId())?.portalComponent.get(portal.getId()) === targetComponent;
-    });
-
-    for (const sector of grid.getSectors()) {
-      this.buildSectorFlow(sector, targetSector, targetIdx, routeCosts, n => {
-        integrations += n;
-      });
-    }
-
     this.perf.end('Flow');
-    this.perf.setCounter('Fields', integrations);
+
+    const fields = new Set<FlowField>();
+    for (const route of this.routes.values()) {
+      for (const step of route?.getSteps() ?? []) {
+        fields.add(step.flowField);
+      }
+    }
+    this.perf.setCounter('Fields', fields.size);
   }
 
   /**
-   * Integrate and store the flow of one sector. Components whose sink is
-   * unchanged since the last integration keep their cells — two flows into
-   * the same sink through the same cost field are equal.
+   * The route shared by the walkable sector area around a cell, planned by the
+   * first mob that asks for it. null when the cell is impassable in the grid
+   * or the library finds no route to the target.
    */
-  private buildSectorFlow(
-    sector: Sector,
-    targetSector: Sector,
-    targetIdx: number,
-    routeCosts: Map<string, number>,
-    countIntegration: (n: number) => void,
-  ): void {
-    const components = this.sectorComponents.get(sector.getId());
-    if (!components) {
-      this.flowFields.delete(sector.getId());
-      return;
+  private routeAt(cell: Waypoint): FlowRoute | null {
+    const grid = this.grid;
+    const target = this.target;
+    if (!grid || !target) {
+      return null;
+    }
+    const sector = grid.getSectorAt(cell.ne, cell.se);
+    if (!sector) {
+      return null;
+    }
+    const { localNe, localSe } = grid.globalToLocal(cell.ne, cell.se);
+    const area = sector.getAreas()[localNe + localSe * SECTOR_SIZE]!;
+    if (area === 0) {
+      return null;
     }
 
-    const previous = this.flowFields.get(sector.getId());
-    const holdsTarget = sector.getId() === targetSector.getId();
-    const holdsTargetComponent = holdsTarget && components.cells[targetIdx]! >= 0;
-
-    // Sink per component first: it decides reuse before any integration.
-    const sinks: Map<number, number> = new Map();
-    const exits: Map<number, readonly [number, number]> = new Map();
-    for (const component of new Set(components.cells)) {
-      if (component < 0) {
-        continue;
-      }
-
-      if (holdsTargetComponent && components.cells[targetIdx] === component) {
-        sinks.set(component, targetIdx);
-        continue;
-      }
-
-      const portal = this.cheapestExit(sector, component, components, routeCosts);
-      if (!portal) {
-        continue;
-      }
-      const entry = portal.getEntryCenter(sector.getId());
-      sinks.set(component, entry.ne + entry.se * SECTOR_SIZE);
-      exits.set(entry.ne + entry.se * SECTOR_SIZE, portalExitDelta(sector.getId(), portal));
+    const key = sector.getId() * (SECTOR_SIZE * SECTOR_SIZE + 1) + area;
+    let route = this.routes.get(key);
+    if (route === undefined) {
+      route = this.pathfinder.getFlowRoute({ gridId: grid.getId(), start: cell, target });
+      this.routes.set(key, route);
     }
+    return route;
+  }
 
-    const reused: Map<number, number> = new Map();
-    const costVersion = sector.getCostField().getVersion();
-    const componentsVersion = this.sectorComponentsVersion.get(sector.getId()) ?? -1;
-    if (previous && previous.costVersion === costVersion && previous.componentsVersion === componentsVersion) {
-      // Components and cost field are unchanged since the previous
-      // integration — component ids are stable, so equal sinks mean
-      // equal flows and the cells can be kept as they are.
-      for (const [component, sink] of sinks) {
-        if (previous.sinks.get(component) === sink) {
-          reused.set(component, sink);
-        }
-      }
+  /**
+   * The cell a mob steps to from `cell`. A mob pushed off its route (or
+   * without one yet) switches to the route of the area it stands in.
+   */
+  private nextCell(mob: Mob, cell: Waypoint): Waypoint | null {
+    const next = mob.route?.next(cell.ne, cell.se);
+    if (next) {
+      return next;
     }
-
-    // Merge the per-component fields into one cell array. Components are
-    // disjoint, so merging is lossless; reused components keep their cells.
-    const cells = previous?.cells.slice() ?? new Uint8Array(SECTOR_SIZE * SECTOR_SIZE);
-    let integrated = 0;
-    for (const [component, sink] of sinks) {
-      if (reused.has(component)) {
-        continue;
-      }
-
-      const { flowField } = this.integrator.get(sector.getCostField(), {
-        ne: sink % SECTOR_SIZE,
-        se: Math.floor(sink / SECTOR_SIZE),
-      });
-      integrated++;
-
-      const fieldCells = flowField.getCells();
-      for (let i = 0; i < cells.length; i++) {
-        if (components.cells[i] === component) {
-          cells[i] = fieldCells[i]!;
-        }
-      }
+    const route = this.routeAt(cell);
+    if (route === mob.route) {
+      return null;
     }
-
-    // Cells of components without a route keep no stale flow — a vanished
-    // route must leave its cells empty, and cells that turned impassable
-    // must not keep direction bits from the previous integration.
-    for (let i = 0; i < cells.length; i++) {
-      const component = components.cells[i]!;
-      if (component < 0 || !sinks.has(component)) {
-        cells[i] = 0;
-      }
-    }
-
-    countIntegration(integrated);
-    this.flowFields.set(sector.getId(), { cells, exits, sinks, costVersion, componentsVersion });
+    mob.route = route;
+    return route?.next(cell.ne, cell.se) ?? null;
   }
 
   /** Size of the structures the planning tick works on, for the perf panel. */
@@ -1667,67 +1558,9 @@ export class World {
     this.perf.setCounter('Mobs', this.mobs.length);
   }
 
-  /** Portal of one sector component with the cheapest route to the target. */
-  private cheapestExit(
-    sector: Sector,
-    component: number,
-    components: SectorComponents,
-    routeCosts: Map<string, number>,
-  ): Portal | undefined {
-    let best: Portal | undefined;
-    let bestCost = Infinity;
-
-    for (const portal of sector.getPortals()) {
-      if (components.portalComponent.get(portal.getId()) !== component) {
-        continue;
-      }
-      const cost = routeCosts.get(crossingKey(portal.getId(), sector.getId()));
-      if (cost !== undefined && cost < bestCost) {
-        bestCost = cost;
-        best = portal;
-      }
-    }
-
-    return best;
-  }
-
-  /** Flow direction for a global cell, or null where there is no flow. */
-  private flowAt(cell: Waypoint): readonly [number, number] | null {
-    const grid = this.grid;
-    if (!grid) {
-      return null;
-    }
-
-    const sector = grid.getSectorAt(cell.ne, cell.se);
-    if (!sector) {
-      return null;
-    }
-
-    const flow = this.flowFields.get(sector.getId());
-    if (!flow) {
-      return null;
-    }
-
-    const { localNe, localSe } = grid.globalToLocal(cell.ne, cell.se);
-    const idx = localNe + localSe * SECTOR_SIZE;
-
-    const exit = flow.exits.get(idx);
-    if (exit) {
-      return exit;
-    }
-
-    const value = flow.cells[idx]!;
-    if ((value & FLOW_PATHABLE_MASK) === 0) {
-      return null;
-    }
-
-    return FLOW_DELTAS[value & FLOW_DIR_MASK] ?? null;
-  }
-
   /**
-   * Follow the flow fields from the mob's cell to the target. The trace is the
-   * route drawn on the canvas, and reaching the target is what clears the
-   * mob's blocked flag.
+   * Follow the mob's route from its cell to the target. The trace is the line
+   * drawn on the canvas; `blocked` means the library has no way to the target.
    */
   private traceMob(mob: Mob): void {
     mob.traceVersion = this.version;
@@ -1743,20 +1576,17 @@ export class World {
     const trace: Waypoint[] = [start];
     let current = start;
 
-    for (let i = 0; i < MAX_TRACE_LENGTH; i++) {
+    // A route visits a cell at most once, so the cell count bounds the walk.
+    const maxSteps = this.cols * this.rows;
+    for (let i = 0; i < maxSteps; i++) {
       if (current.ne === target.ne && current.se === target.se) {
         mob.trace = trace;
         mob.blocked = false;
         return;
       }
 
-      const delta = this.flowAt(current);
-      if (!delta) {
-        break;
-      }
-
-      const next = { ne: current.ne + delta[0], se: current.se + delta[1] };
-      if (next.ne < 0 || next.se < 0 || next.ne >= this.cols || next.se >= this.rows) {
+      const next = i === 0 ? this.nextCell(mob, current) : (mob.route?.next(current.ne, current.se) ?? null);
+      if (!next) {
         break;
       }
 
@@ -1825,7 +1655,7 @@ export class World {
 
       if (cell) {
         // Inside the target cell steer straight at it, otherwise follow the
-        // flow field into the centre of the next cell.
+        // route into the centre of the next cell.
         let aimX = targetX;
         let aimY = targetY;
         if (cell.ne !== target.ne || cell.se !== target.se) {
@@ -1841,10 +1671,10 @@ export class World {
               aimY = mob.y;
             }
           } else {
-            const delta = this.flowAt(cell);
-            if (delta) {
-              aimX = (cell.ne + delta[0]) * CELL_SIZE + CELL_SIZE / 2;
-              aimY = (cell.se + delta[1]) * CELL_SIZE + CELL_SIZE / 2;
+            const next = this.nextCell(mob, cell);
+            if (next) {
+              aimX = next.ne * CELL_SIZE + CELL_SIZE / 2;
+              aimY = next.se * CELL_SIZE + CELL_SIZE / 2;
             } else {
               aimX = mob.x;
               aimY = mob.y;
@@ -1906,6 +1736,7 @@ export class World {
         }
         mob.trace = [];
         mob.traceVersion = -1;
+        mob.route = null;
       }
     }
   }
@@ -1931,177 +1762,8 @@ function resizeLayer(
   return next;
 }
 
-/** Cells of a portal inside one of its two sectors, in that sector's local space. */
-function entryCells(sectorId: SectorId, portal: Portal): TileDelta[] {
-  const start = portal.getEntryStart(sectorId);
-  const end = portal.getEntryEnd(sectorId);
-  const cells: TileDelta[] = [];
-  for (let se = start.se; se <= end.se; se++) {
-    for (let ne = start.ne; ne <= end.ne; ne++) {
-      cells.push({ ne, se });
-    }
-  }
-  return cells;
-}
-
-/** Walkable components of one sector and which of them each portal sits in. */
-interface SectorComponents {
-  /** Component id per local cell; -1 for impassable cells. */
-  readonly cells: Int16Array;
-  readonly portalComponent: Map<PortalId, number>;
-}
-
-/** Key of a portal crossing: leaving `sectorId` through `portalId`. */
-function crossingKey(portalId: PortalId, sectorId: SectorId): string {
-  return `${portalId}:${sectorId}`;
-}
-
-/**
- * Cost of every portal crossing to the target, by Dijkstra backwards from the
- * target sector over the portal graph.
- *
- * A state is "leave sector S through portal p", which is what a sector's flow
- * field has to commit to. `portalAStar()` answers a different question — one
- * route for one request — while the crowd needs the exit of every sector at
- * once; one backward search gives all of them, and they agree with each other.
- */
-function routeCostsToTarget(
-  grid: Grid,
-  targetSector: Sector,
-  target: Waypoint,
-  reachesTarget: (portal: Portal) => boolean,
-): Map<string, number> {
-  const costs = new Map<string, number>();
-  const heap = new BinaryHeap<string>();
-
-  const push = (key: string, cost: number) => {
-    const known = costs.get(key);
-    if (known !== undefined && known <= cost) {
-      return;
-    }
-    costs.set(key, cost);
-    if (heap.has(key)) {
-      heap.updatePriority(key, cost);
-    } else {
-      heap.push(key, cost);
-    }
-  };
-
-  const portalsById: Map<PortalId, Portal> = new Map();
-  for (const sector of grid.getSectors()) {
-    for (const portal of sector.getPortals()) {
-      portalsById.set(portal.getId(), portal);
-    }
-  }
-
-  // Crossing into the target sector costs the walk from the portal to the
-  // target. Only portals in the target's own component lead there; one in a
-  // walled-off pocket of the target sector would be a dead end.
-  for (const portal of targetSector.getPortals()) {
-    if (!reachesTarget(portal)) {
-      continue;
-    }
-    const from = portal.getExitSector(targetSector.getId());
-    const center = globalPortalCenter(grid, targetSector.getId(), portal);
-    push(crossingKey(portal.getId(), from), tileEuclidean(center, target));
-  }
-
-  while (true) {
-    const key = heap.pop();
-    if (key === undefined) {
-      break;
-    }
-
-    const [portalId, sectorId] = key.split(':').map(Number) as [PortalId, SectorId];
-    const portal = portalsById.get(portalId);
-    if (!portal) {
-      continue;
-    }
-    const cost = costs.get(key)!;
-
-    // To cross `portal` out of `sectorId`, a mob first has to enter that
-    // sector — through any portal connected to it inside the sector.
-    const center = globalPortalCenter(grid, sectorId, portal);
-    for (const previous of portal.getConnected(sectorId)) {
-      const previousCenter = globalPortalCenter(grid, sectorId, previous);
-      push(
-        crossingKey(previous.getId(), previous.getExitSector(sectorId)),
-        cost + tileEuclidean(center, previousCenter),
-      );
-    }
-  }
-
-  return costs;
-}
-
-/** Middle cell of a portal inside one of its sectors, in global coordinates. */
-function globalPortalCenter(grid: Grid, sectorId: SectorId, portal: Portal): Waypoint {
-  const sector = grid.getSector(sectorId);
-  const local = portal.getEntryCenter(sectorId);
-  const origin = sector?.getPosition() ?? { x: 0, y: 0 };
-  return {
-    ne: origin.x * SECTOR_SIZE + local.ne,
-    se: origin.y * SECTOR_SIZE + local.se,
-  };
-}
-
-/** Cell step that crosses a portal, leaving the given sector. */
-function portalExitDelta(sectorId: SectorId, portal: Portal): readonly [number, number] {
-  const forward = portal.getSector0() === sectorId;
-  if (portal.getDirection() === PortalDirection.NORTH_SOUTH) {
-    return forward ? [0, 1] : [0, -1];
-  }
-  return forward ? [1, 0] : [-1, 0];
-}
-
 /** True when a click at (px, py) lands inside the obstacle's bounding box. */
 function coversObstacle(o: MovingObstacle, px: number, py: number): boolean {
   const half = o.size / 2;
   return px >= o.x - half && px <= o.x + half && py >= o.y - half && py <= o.y + half;
-}
-
-/**
- * Label the passable cells of a sector cost field with 4-connected component
- * ids. Impassable cells get -1.
- */
-function componentsOf(costs: Uint8Array): Int16Array {
-  const components = new Int16Array(costs.length).fill(-1);
-  const queue: number[] = [];
-  let nextComponent = 0;
-
-  for (let seed = 0; seed < costs.length; seed++) {
-    if (costs[seed] === COST_IMPASSABLE || components[seed] !== -1) {
-      continue;
-    }
-
-    const component = nextComponent++;
-    components[seed] = component;
-    queue.push(seed);
-
-    while (queue.length > 0) {
-      const idx = queue.pop()!;
-      const ne = idx % SECTOR_SIZE;
-      const se = Math.floor(idx / SECTOR_SIZE);
-
-      const neighbours = [
-        ne > 0 ? idx - 1 : -1,
-        ne < SECTOR_SIZE - 1 ? idx + 1 : -1,
-        se > 0 ? idx - SECTOR_SIZE : -1,
-        se < SECTOR_SIZE - 1 ? idx + SECTOR_SIZE : -1,
-      ];
-
-      for (const neighbour of neighbours) {
-        if (neighbour < 0) {
-          continue;
-        }
-        if (costs[neighbour] === COST_IMPASSABLE || components[neighbour] !== -1) {
-          continue;
-        }
-        components[neighbour] = component;
-        queue.push(neighbour);
-      }
-    }
-  }
-
-  return components;
 }
