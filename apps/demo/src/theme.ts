@@ -7,6 +7,8 @@ import { ArrowLeftRight, Circle, SignpostBig, Square, Target } from 'lucide-reac
  * theme colors declared in `index.css` — keep both in sync.
  */
 export const COLORS = {
+  primary: '#4fd1c5',
+  secondary: '#F5A623',
   bg: '#0D1114',
   panel: '#14181C',
   border: '#242A30',

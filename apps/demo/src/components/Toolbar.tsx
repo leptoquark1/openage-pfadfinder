@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Activity, BrickWall, Dices, Eye, Info, RotateCcw, Route } from 'lucide-react';
+import { Activity, BookOpen, BrickWall, Dices, Eye, Info, RotateCcw, Route } from 'lucide-react';
 import { MODES, type Mode } from '../theme.js';
 
 interface ToolbarButtonProps {
@@ -101,6 +101,13 @@ export function Toolbar({
       <ToolbarButton active={showLegend} icon={Info} label="Legend" onClick={() => onShowLegend(!showLegend)} />
       <ToolbarButton icon={BrickWall} label="Scatter" onClick={onScatterWalls} />
       <ToolbarButton icon={RotateCcw} label="Reset" onClick={onReset} />
+      <a
+        href={`${import.meta.env.BASE_URL}guide.html`}
+        className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-transparent px-1 py-2.5 text-muted transition-colors duration-150 hover:bg-panel/60 hover:text-fg"
+      >
+        <BookOpen size={18} strokeWidth={1.75} />
+        <span className="font-mono text-[11px]">Guide</span>
+      </a>
 
       <ToolbarSectionTitle label="Stats" mt={true} />
       <div className="pl-2 font-mono text-[11px] leading-[1.8] text-muted" aria-live="polite">

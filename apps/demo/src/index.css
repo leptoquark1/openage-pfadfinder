@@ -2,6 +2,8 @@
 
 /* Design tokens — kept in sync with COLORS in `theme.ts`, which the canvas uses. */
 @theme {
+    --color-primary: #4fd1c5;
+    --color-secondary: #F5A623;
     --color-bg: #0d1114;
     --color-panel: #14181c;
     --color-border: #242a30;
@@ -9,17 +11,62 @@
     --color-fg: #e7ebee;
     --color-muted: #8a95a1;
     --color-grid: #1b2126;
-    --color-target: #f5a623;
-    --color-mob: #4fd1c5;
+    --color-target: var(--color-secondary);
+    --color-mob: var(--color-primary);
     --color-obstacle: #fb7185;
     --color-obstacle-moving: #fdba74;
     --color-flow: #2a3138;
     --color-section: #3f4957;
     --color-divider: #3f4957;
+
+    --animate-tour-in: tour-in 1.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    /* Leaving the intro: the text goes and the page darkens while the map moves; once it has
+       arrived (SCENE_HANDOVER_MS), the spotlight opens and the tooltip appears. */
+    --animate-tour-out: tour-out 0.22s ease-out both;
+    --animate-tour-shade: tour-fade 0.45s ease-out both;
+    --animate-tour-uncover: tour-out 0.35s ease-out 0.9s both;
+    --animate-tour-tip: tour-fade 0.35s ease-out 0.9s both;
+
+    @keyframes tour-in {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+
+    @keyframes tour-fade {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes tour-out {
+        from {
+            opacity: 1;
+        }
+        to {
+            opacity: 0;
+        }
+    }
 }
 
 body {
     margin: 0;
     overflow: hidden;
     background: var(--color-bg);
+}
+
+/* Tailwind v4 leaves buttons on the default cursor. */
+@layer base {
+    a[href],
+    button:not(:disabled) {
+        cursor: pointer;
+    }
 }

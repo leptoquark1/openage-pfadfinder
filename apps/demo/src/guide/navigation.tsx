@@ -1,0 +1,367 @@
+import type { LucideIcon } from 'lucide-react';
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  CircleHelp,
+  RotateCcw,
+} from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { MapPicker, MapPreview } from './maps.js';
+import type { Scenario } from './scenarios.js';
+import { CHAPTERS, type Chapter, type Timeline } from './timeline.js';
+
+/** The steps of a chapter of this run: `first` up to, but not including, `end`. */
+function stepRange(timeline: Timeline, chapterAt: number) {
+  const first = timeline.chapters[chapterAt]!.first;
+  const end = timeline.chapters[chapterAt + 1]?.first ?? timeline.steps.length;
+  return { first, end };
+}
+
+function ProgressLine({ progress }: { progress: number }) {
+  return (
+    <span className="absolute inset-x-0 bottom-0 h-[2px] bg-border/70">
+      <span className="block h-full bg-mob transition-[width] duration-300" style={{ width: `${progress * 100}%` }} />
+    </span>
+  );
+}
+
+function ChapterRow({
+  chapter,
+  timeline,
+  index,
+  onSelect,
+}: {
+  chapter: Chapter;
+  timeline: Timeline;
+  index: number;
+  onSelect: (step: number) => void;
+}) {
+  const number = CHAPTERS.indexOf(chapter) + 1;
+  const current = CHAPTERS.findIndex(c => c.id === timeline.steps[index]!.chapter) + 1;
+  const at = timeline.chapters.findIndex(c => c.id === chapter.id);
+  const available = at >= 0;
+  const active = number === current;
+  const done = available && number < current;
+
+  let progress = done ? 1 : 0;
+  if (active) {
+    const { first, end } = stepRange(timeline, at);
+    progress = (index - first + 1) / (end - first);
+  }
+
+  return (
+    <li>
+      <button
+        type="button"
+        disabled={!available}
+        aria-current={active ? 'step' : undefined}
+        title={available ? undefined : 'Not used on this map'}
+        onClick={() => onSelect(timeline.chapters[at]!.first)}
+        className={`relative flex h-9 w-full items-center gap-2.5 overflow-hidden rounded-md px-2 text-left transition-colors disabled:opacity-35 ${
+          active ? 'bg-mob/12 text-fg' : 'text-muted enabled:hover:bg-border/60 enabled:hover:text-fg'
+        }`}
+      >
+        <span
+          className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold ${
+            active ? 'bg-mob text-bg' : done ? 'bg-mob/25 text-mob' : 'bg-border text-muted'
+          }`}
+        >
+          {done ? <Check size={11} strokeWidth={3} aria-hidden="true" /> : number}
+        </span>
+        <span className={`truncate font-mono text-[12px] ${active ? 'font-semibold' : ''}`}>{chapter.title}</span>
+        {active && <ProgressLine progress={progress} />}
+      </button>
+    </li>
+  );
+}
+
+/** The current chapter, top right. Unfolds into all chapters and the maps. */
+export function ChapterMenu({
+  timeline,
+  index,
+  scenario,
+  forceOpen,
+  onSelect,
+  onScenario,
+  onTour,
+}: {
+  timeline: Timeline;
+  index: number;
+  scenario: Scenario;
+  /** The interface tour unfolds the chapter list to explain it. */
+  forceOpen: boolean;
+  onSelect: (step: number) => void;
+  onScenario: (scenario: Scenario) => void;
+  onTour: () => void;
+}) {
+  const [menuOpen, setOpen] = useState(false);
+  const [menuView, setView] = useState<'chapters' | 'maps'>('chapters');
+  const open = menuOpen || forceOpen;
+  const view = forceOpen ? 'chapters' : menuView;
+  const root = useRef<HTMLElement>(null);
+  const viewFocus = useRef<HTMLButtonElement>(null);
+  const listId = useId();
+
+  // The button that switched the view is gone afterwards, so keyboard focus moves along.
+  const switchView = (next: 'chapters' | 'maps') => {
+    flushSync(() => setView(next));
+    viewFocus.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const onPointer = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  const at = timeline.chapters.findIndex(c => c.id === timeline.steps[index]!.chapter);
+  const chapter = timeline.chapters[at]!;
+  const number = CHAPTERS.findIndex(c => c.id === chapter.id) + 1;
+  const { first, end } = stepRange(timeline, at);
+  const parts = [...new Set(CHAPTERS.map(c => c.part))];
+
+  return (
+    <nav
+      ref={root}
+      data-tour="chapters"
+      aria-label="Chapters"
+      className={`absolute top-3 right-3 z-30 overflow-hidden rounded-xl border border-border-strong bg-panel/95 shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition-[width] duration-200 motion-reduce:transition-none ${
+        open && view === 'maps' ? 'w-[min(348px,calc(100vw-1.5rem))]' : 'w-[min(264px,calc(100vw-6.5rem))]'
+      }`}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-label={`Chapter ${number}: ${chapter.title}. ${open ? 'Hide' : 'Show'} all chapters`}
+        onClick={() => {
+          if (!open) {
+            setView('chapters');
+          }
+          setOpen(!open);
+        }}
+        className="relative flex h-11 w-full items-center gap-2.5 px-3 text-left transition-colors hover:bg-border/40"
+      >
+        <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-mob font-mono text-[11px] font-bold text-bg">
+          {number}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] font-semibold text-fg">{chapter.title}</span>
+        <span className="shrink-0 font-mono text-[10.5px] text-muted tabular-nums">
+          {index - first + 1}/{end - first}
+        </span>
+        <ChevronDown
+          size={17}
+          aria-hidden="true"
+          className={`shrink-0 text-muted transition-transform duration-200 motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+        />
+        {!open && <ProgressLine progress={(index - first + 1) / (end - first)} />}
+      </button>
+
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 motion-reduce:transition-none ${
+          open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        }`}
+      >
+        <div id={listId} inert={!open} className="min-h-0 overflow-hidden">
+          <div className="max-h-[calc(100dvh-5rem)] overflow-y-auto border-t border-border p-2">
+            {view === 'maps' ? (
+              <MapPicker
+                scenario={scenario}
+                onScenario={onScenario}
+                onBack={() => switchView('chapters')}
+                backRef={viewFocus}
+              />
+            ) : (
+              <>
+                {parts.map(part => (
+                  <div key={part} className="mb-2">
+                    <div className="mb-0.5 px-2 pt-1 font-mono text-[10px] tracking-[0.1em] text-muted/80 uppercase">
+                      {part}
+                    </div>
+                    <ol className="flex flex-col gap-0.5">
+                      {CHAPTERS.filter(c => c.part === part).map(c => (
+                        <ChapterRow
+                          key={c.id}
+                          chapter={c}
+                          timeline={timeline}
+                          index={index}
+                          onSelect={step => {
+                            onSelect(step);
+                            setOpen(false);
+                          }}
+                        />
+                      ))}
+                    </ol>
+                  </div>
+                ))}
+
+                <button
+                  ref={viewFocus}
+                  type="button"
+                  data-tour="maps"
+                  aria-label={`Map: ${scenario.name}. Choose another map`}
+                  onClick={() => switchView('maps')}
+                  className="flex w-full items-center gap-2.5 rounded-md border-t border-border p-2 pt-2.5 text-left transition-colors hover:bg-border/60"
+                >
+                  <MapPreview scenario={scenario} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-mono text-[10px] tracking-[0.1em] text-muted/80 uppercase">Map</span>
+                    <span className="block truncate font-mono text-[12px] font-semibold text-fg">{scenario.name}</span>
+                    <span className="block font-mono text-[10.5px] text-mob">Compare maps</span>
+                  </span>
+                  <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden="true" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onTour();
+                  }}
+                  className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[11px] text-muted transition-colors hover:bg-border/60 hover:text-fg"
+                >
+                  <CircleHelp size={14} aria-hidden="true" />
+                  How this guide works
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function DockButton({
+  icon: Icon,
+  label,
+  tour,
+  onClick,
+  disabled,
+}: {
+  icon: LucideIcon;
+  label: string;
+  /** The stop of the interface tour that explains this button. */
+  tour: string;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      data-tour={tour}
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-fg/85 transition-colors enabled:hover:bg-border-strong enabled:hover:text-fg disabled:opacity-25"
+    >
+      <Icon size={19} strokeWidth={2.25} aria-hidden="true" />
+    </button>
+  );
+}
+
+/** The floating controls. Every button keeps its place, so repeated clicks stay on target. */
+export function StepDock({
+  timeline,
+  index,
+  onBack,
+  onNext,
+  onChapter,
+  onSeek,
+}: {
+  timeline: Timeline;
+  index: number;
+  onBack: () => void;
+  onNext: () => void;
+  onChapter: (direction: 1 | -1) => void;
+  onSeek: (step: number) => void;
+}) {
+  const at = timeline.chapters.findIndex(c => c.id === timeline.steps[index]!.chapter);
+  const nextChapter = timeline.chapters[at + 1];
+  const { first, end } = stepRange(timeline, at);
+  const atFinish = index === timeline.steps.length - 1;
+  const atChapterEnd = index === end - 1;
+
+  const nextLabel = atFinish ? 'Start over' : atChapterEnd ? `Next: ${nextChapter!.title}` : 'Next step';
+  const NextIcon = atFinish ? RotateCcw : ArrowRight;
+
+  return (
+    <nav
+      aria-label="Steps"
+      className="absolute bottom-3 left-1/2 z-20 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-0.5 rounded-full border border-border-strong bg-panel/95 p-1.5 shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-sm"
+    >
+      <DockButton
+        icon={ChevronsLeft}
+        label="Previous section (Shift + ←)"
+        tour="sections"
+        onClick={() => onChapter(-1)}
+        disabled={index === 0}
+      />
+      <DockButton icon={ChevronLeft} label="Previous step (←)" tour="step" onClick={onBack} disabled={index === 0} />
+
+      <div data-tour="ticks" className="hidden h-3 w-[132px] shrink-0 items-center gap-[2px] px-2 sm:flex">
+        {Array.from({ length: end - first }, (_, i) => {
+          const step = first + i;
+          return (
+            <button
+              key={step}
+              type="button"
+              aria-label={`Step ${i + 1}: ${timeline.steps[step]!.title}`}
+              aria-current={step === index ? 'step' : undefined}
+              title={timeline.steps[step]!.title}
+              onClick={() => onSeek(step)}
+              className="group flex h-full min-w-0 flex-1 items-center"
+            >
+              <span
+                className={`block h-1 w-full rounded-full transition-colors group-hover:bg-fg ${
+                  step === index ? 'bg-target' : step < index ? 'bg-mob' : 'bg-border-strong'
+                }`}
+              />
+            </button>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        data-tour="step"
+        title={atFinish ? 'Start over' : `${nextLabel} (→)`}
+        onClick={atFinish ? () => onSeek(0) : onNext}
+        className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full bg-mob px-3 font-mono text-[12px] font-semibold text-bg transition-colors hover:bg-mob/85 sm:w-[184px] sm:flex-none"
+      >
+        <span className="truncate">{nextLabel}</span>
+        <NextIcon size={16} strokeWidth={2.5} className="shrink-0" aria-hidden="true" />
+      </button>
+      <DockButton
+        icon={ChevronsRight}
+        label="Next section (Shift + →)"
+        tour="sections"
+        onClick={() => onChapter(1)}
+        disabled={!nextChapter}
+      />
+    </nav>
+  );
+}
