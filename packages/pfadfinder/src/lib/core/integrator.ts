@@ -1,3 +1,4 @@
+import { xyToIndex } from '../../shared/coordinates.js';
 import type { SectorId, TileDelta } from '../../shared/types.js';
 import type { Portal } from '../graph/portal.js';
 import { FieldCache } from '../pathfinding/field-cache.js';
@@ -22,8 +23,8 @@ export interface IntegrationFlowPair {
  *
  * Copy-on-read: `getPortal()` clones the cached fields before it hands
  * them out (and before the LOS pass or flag transfer), so the cache stays
- * pristine for future lookups. `getPortalShared()` skips the copies for
- * callers that only read.
+ * pristine for future lookups. `getPortalShared()` and `getTargetShared()`
+ * skip the copies for callers that only read.
  *
  * Cache scope: every cost field gets its own cache, held weakly, so fields
  * of different grids never share entries and the cache of a replaced grid
@@ -142,6 +143,31 @@ export class Integrator {
     const integrationField = this.integrate(costField, target, withLos);
     const flowField = this.build(integrationField);
     return { integrationField, flowField };
+  }
+
+  /**
+   * Integration + flow field (with line of sight) towards a cell of this cost
+   * field, kept for the most recent targets (`FieldCache.MAX_TARGETS` per
+   * cost field), so units heading for the same cell share one field.
+   *
+   * Read-only, like `getPortalShared()`: the fields are shared with the cache
+   * and with every other caller.
+   */
+  getTargetShared(costField: CostField, target: TileDelta): IntegrationFlowPair {
+    const cache = this.cacheFor(costField);
+    const cell = xyToIndex(target.ne, target.se, costField.getSize());
+
+    let entry = cache.getTarget(cell);
+    if (!entry) {
+      const integrationField = this.integrate(costField, target, true);
+      entry = {
+        integrationField,
+        flowField: this.build(integrationField),
+        costFieldVersion: costField.getVersion(),
+      };
+      cache.addTarget(cell, entry);
+    }
+    return entry;
   }
 
   /**
