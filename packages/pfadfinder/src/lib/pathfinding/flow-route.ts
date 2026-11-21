@@ -10,8 +10,8 @@ import { pathFound, pathNotFound } from './path-result.js';
 /**
  * One sector of a route and the flow field that leads through it.
  *
- * Read-only: outside the target sector the field is the cached one, shared
- * with every other route through the same portal.
+ * Read-only: the field is the cached one, shared with every other route
+ * through the same portal or to the same target.
  */
 export interface FlowStep {
   readonly sector: Sector;

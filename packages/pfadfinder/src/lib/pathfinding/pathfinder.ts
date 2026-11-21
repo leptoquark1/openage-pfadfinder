@@ -137,7 +137,7 @@ export class Pathfinder {
     );
 
     // single sector: use LOS for best path quality
-    const { flowField } = this.integrator.get(sector.getCostField(), { ne: tLocalNe, se: tLocalSe }, true);
+    const { flowField } = this.integrator.getTargetShared(sector.getCostField(), { ne: tLocalNe, se: tLocalSe });
 
     return new FlowRoute(grid, [{ sector, flowField }], request.target);
   }
@@ -203,10 +203,10 @@ export class Pathfinder {
     }
 
     // --- Target sector: LOS integration toward the goal ---
-    const { flowField: targetFlow, integrationField: targetIntegration } = this.integrator.get(
+    // (los_depth = 1: only the target sector gets LOS)
+    const { flowField: targetFlow, integrationField: targetIntegration } = this.integrator.getTargetShared(
       targetSector.getCostField(),
       { ne: tLocalNe, se: tLocalSe },
-      true, // los_depth = 1: only the target sector gets LOS
     );
 
     // --- Remaining sectors, back to front: each integrates from the
