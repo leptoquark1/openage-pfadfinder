@@ -1,97 +1,74 @@
-export interface HeapNode<T> {
-  readonly item: T;
+/** What `IntrusiveHeap` orders: an object that carries its own heap state. */
+export interface HeapEntry {
   priority: number;
+  /** Current position in the heap array; maintained by the heap. */
+  index: number;
+}
+
+export interface HeapNode<T> extends HeapEntry {
+  readonly item: T;
 }
 
 /**
- * Generic binary min-heap.
- * Used as priority queue for A* on the portal graph.
- * Ordering is by `priority` (ascending = min-heap).
- *
- * An item may only be pushed once while it is in the heap. Pushing an
- * item that is already present updates its priority instead, so the
- * internal item→index map can never point at a stale node.
+ * Binary min-heap over entries that track their own position, so changing a
+ * priority needs no lookup. An entry may be in one heap at a time and only
+ * once; `update()` takes an entry that is in this heap.
  */
-export class BinaryHeap<T> {
-  private nodes: HeapNode<T>[] = [];
-  private readonly indexMap: Map<T, number> = new Map();
+export class IntrusiveHeap<E extends HeapEntry> {
+  private entries: E[] = [];
 
   get size(): number {
-    return this.nodes.length;
+    return this.entries.length;
   }
 
   get isEmpty(): boolean {
-    return this.nodes.length === 0;
+    return this.entries.length === 0;
   }
 
-  push(item: T, priority: number): void {
-    if (this.indexMap.has(item)) {
-      // Re-push of a live item: keep one node per item so the
-      // index map stays consistent — act like updatePriority.
-      this.updatePriority(item, priority);
-      return;
-    }
-    const node: HeapNode<T> = { item, priority };
-    const idx = this.nodes.length;
-    this.nodes.push(node);
-    this.indexMap.set(item, idx);
+  push(entry: E, priority: number): void {
+    const idx = this.entries.length;
+    entry.priority = priority;
+    entry.index = idx;
+    this.entries.push(entry);
     this.siftUp(idx);
   }
 
-  pop(): T | undefined {
-    if (this.nodes.length === 0) {
+  pop(): E | undefined {
+    if (this.entries.length === 0) {
       return undefined;
     }
-    const top = this.nodes[0]!;
-    this.indexMap.delete(top.item);
-
-    const last = this.nodes.pop()!;
-    if (this.nodes.length > 0) {
-      this.nodes[0] = last;
-      this.indexMap.set(last.item, 0);
+    const top = this.entries[0]!;
+    const last = this.entries.pop()!;
+    if (this.entries.length > 0) {
+      this.entries[0] = last;
+      last.index = 0;
       this.siftDown(0);
     }
-    return top.item;
+    return top;
   }
 
-  peek(): T | undefined {
-    return this.nodes[0]?.item;
+  peek(): E | undefined {
+    return this.entries[0];
   }
 
-  updatePriority(item: T, priority: number): boolean {
-    const idx = this.indexMap.get(item);
-    if (idx === undefined) {
-      return false;
-    }
-
-    const oldPriority = this.nodes[idx]!.priority;
-    this.nodes[idx]!.priority = priority;
+  update(entry: E, priority: number): void {
+    const oldPriority = entry.priority;
+    entry.priority = priority;
     if (priority < oldPriority) {
-      this.siftUp(idx);
+      this.siftUp(entry.index);
     } else if (priority > oldPriority) {
-      this.siftDown(idx);
+      this.siftDown(entry.index);
     }
-    return true;
-  }
-
-  has(item: T): boolean {
-    return this.indexMap.has(item);
-  }
-
-  getPriority(item: T): number | undefined {
-    const idx = this.indexMap.get(item);
-    return idx !== undefined ? this.nodes[idx]!.priority : undefined;
   }
 
   clear(): void {
-    this.nodes = [];
-    this.indexMap.clear();
+    this.entries = [];
   }
 
   private siftUp(idx: number): void {
     while (idx > 0) {
       const parent = (idx - 1) >> 1;
-      if (this.nodes[idx]!.priority < this.nodes[parent]!.priority) {
+      if (this.entries[idx]!.priority < this.entries[parent]!.priority) {
         this.swap(idx, parent);
         idx = parent;
       } else {
@@ -101,16 +78,16 @@ export class BinaryHeap<T> {
   }
 
   private siftDown(idx: number): void {
-    const n = this.nodes.length;
+    const n = this.entries.length;
     while (true) {
       let smallest = idx;
       const left = 2 * idx + 1;
       const right = 2 * idx + 2;
 
-      if (left < n && this.nodes[left]!.priority < this.nodes[smallest]!.priority) {
+      if (left < n && this.entries[left]!.priority < this.entries[smallest]!.priority) {
         smallest = left;
       }
-      if (right < n && this.nodes[right]!.priority < this.nodes[smallest]!.priority) {
+      if (right < n && this.entries[right]!.priority < this.entries[smallest]!.priority) {
         smallest = right;
       }
 
@@ -124,10 +101,79 @@ export class BinaryHeap<T> {
   }
 
   private swap(i: number, j: number): void {
-    const tmp = this.nodes[i]!;
-    this.nodes[i] = this.nodes[j]!;
-    this.nodes[j] = tmp;
-    this.indexMap.set(this.nodes[i]!.item, i);
-    this.indexMap.set(this.nodes[j]!.item, j);
+    const a = this.entries[i]!;
+    const b = this.entries[j]!;
+    this.entries[i] = b;
+    this.entries[j] = a;
+    b.index = i;
+    a.index = j;
+  }
+}
+
+/**
+ * Generic binary min-heap for items of any type.
+ * Ordering is by `priority` (ascending = min-heap).
+ *
+ * An item may only be pushed once while it is in the heap. Pushing an
+ * item that is already present updates its priority instead, so the
+ * internal item→node map can never point at a stale node.
+ */
+export class BinaryHeap<T> {
+  private readonly heap = new IntrusiveHeap<HeapNode<T>>();
+  private readonly nodeOf: Map<T, HeapNode<T>> = new Map();
+
+  get size(): number {
+    return this.heap.size;
+  }
+
+  get isEmpty(): boolean {
+    return this.heap.isEmpty;
+  }
+
+  push(item: T, priority: number): void {
+    const known = this.nodeOf.get(item);
+    if (known) {
+      // Re-push of a live item: keep one node per item.
+      this.heap.update(known, priority);
+      return;
+    }
+    const node: HeapNode<T> = { item, priority, index: 0 };
+    this.nodeOf.set(item, node);
+    this.heap.push(node, priority);
+  }
+
+  pop(): T | undefined {
+    const top = this.heap.pop();
+    if (!top) {
+      return undefined;
+    }
+    this.nodeOf.delete(top.item);
+    return top.item;
+  }
+
+  peek(): T | undefined {
+    return this.heap.peek()?.item;
+  }
+
+  updatePriority(item: T, priority: number): boolean {
+    const node = this.nodeOf.get(item);
+    if (!node) {
+      return false;
+    }
+    this.heap.update(node, priority);
+    return true;
+  }
+
+  has(item: T): boolean {
+    return this.nodeOf.has(item);
+  }
+
+  getPriority(item: T): number | undefined {
+    return this.nodeOf.get(item)?.priority;
+  }
+
+  clear(): void {
+    this.heap.clear();
+    this.nodeOf.clear();
   }
 }

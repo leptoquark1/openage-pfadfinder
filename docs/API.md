@@ -111,6 +111,7 @@ A* search data for one portal, pre-built by `grid.initPortalNodes()`.
 | `portal`, `entrySector` | The portal and the sector it was entered from (undefined on start nodes). |
 | `currentCost`, `heuristicCost`, `futureCost`, `wasBest` | A* bookkeeping. |
 | `prevPortal` | Previous node in the search tree. |
+| `search` | This node's state while `portalAStar()` runs; `undefined` between searches. |
 | `exits: Map<SectorId, Map<PortalId, number>>` | Distance cost to each reachable exit portal, per side of this portal (two portals between the same sectors are exits of each other on both sides at different distances). |
 | `initExits(nodeMap)` | (Re)compute `exits` from the node map. Called by the grid. |
 | `getExits(sectorId)` | Exit costs for one side, restricted to portals present in the graph. |
@@ -231,6 +232,7 @@ spans(sector0, sector1, direction, cellStart, cellEnd): boolean;  // same check 
 // entry/exit geometry in the local frame of `sectorId` (start → end along the portal's axis):
 getEntryStart/getEntryCenter/getEntryEnd(sectorId): TileDelta  // where a route enters this sector through the portal
 getExitStart/getExitCenter/getExitEnd(sectorId): TileDelta     // where it leaves towards the other sector
+getExitRangeKey(sectorId): CacheKey  // key of the portal's cells in the sector entered from `sectorId`; same range, same key
 ```
 
 ## Core fields: `CostField`, `IntegrationField`, `FlowField`, `Integrator`
@@ -349,7 +351,7 @@ function pathOutOfBounds(): Path;         // { result: OUT_OF_BOUNDS, waypoints:
 
 ### `BinaryHeap<T>`
 
-Generic binary min-heap, used as the A* priority queue. Ordering is ascending by `priority`; an item may only be pushed once while present — re-pushing acts like a priority update.
+Generic binary min-heap. Ordering is ascending by `priority`; an item may only be pushed once while present — re-pushing acts like a priority update.
 
 ```typescript
 new BinaryHeap<T>();

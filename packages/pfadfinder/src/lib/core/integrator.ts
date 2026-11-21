@@ -1,6 +1,5 @@
 import type { SectorId, TileDelta } from '../../shared/types.js';
 import type { Portal } from '../graph/portal.js';
-import type { CacheKey } from '../../shared/types.js';
 import { FieldCache } from '../pathfinding/field-cache.js';
 import type { CostField } from './cost-field.js';
 import { FlowField } from './flow-field.js';
@@ -190,7 +189,7 @@ export class Integrator {
     target: TileDelta,
   ): IntegrationFlowPair {
     const cache = this.cacheFor(costField);
-    const key = portalRangeKey(portal, otherSectorId);
+    const key = portal.getExitRangeKey(otherSectorId);
 
     let entry = cache.get(key);
     if (!entry) {
@@ -204,15 +203,4 @@ export class Integrator {
     }
     return entry;
   }
-}
-
-/**
- * Cache key of a portal entered from `otherSectorId`: the entered sector's
- * cells of the portal. Together with the cost field (the cache scope) this
- * is everything a cached portal field depends on.
- */
-function portalRangeKey(portal: Portal, otherSectorId: SectorId): CacheKey {
-  const start = portal.getExitStart(otherSectorId);
-  const end = portal.getExitEnd(otherSectorId);
-  return `${otherSectorId}:${start.ne},${start.se}:${end.ne},${end.se}`;
 }
