@@ -9,6 +9,7 @@ import {
   INTEGRATED_COST_UNREACHABLE,
 } from '@leptoquark1/openage-pfadfinder/shared';
 import { COLORS } from '../theme.js';
+import { type Insets, makeView, type View } from './layout.js';
 import type { GuideModel, PortalView } from './model.js';
 import { type AStarNodeState, replayField } from './observe.js';
 import { type Cell, COLS, ROWS, SECTOR_SIZE, SECTORS_X } from './scenarios.js';
@@ -55,6 +56,8 @@ export interface DrawInput {
   readonly width: number;
   readonly height: number;
   readonly camera: Box;
+  /** Canvas space the map leaves free for the floating interface. */
+  readonly insets: Insets;
   readonly scene: Scene;
   readonly now: number;
   readonly hover: Cell | null;
@@ -64,26 +67,22 @@ export interface DrawInput {
   readonly crowdClock: number | null;
 }
 
-interface View {
-  readonly s: number;
-  readonly ox: number;
-  readonly oy: number;
-}
-
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const smooth = (x: number) => x * x * (3 - 2 * x);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const px = (v: View, ne: number) => v.ox + ne * v.s;
 const py = (v: View, se: number) => v.oy + se * v.s;
 
-function makeView(width: number, height: number, camera: Box): View {
-  const s = Math.min(width / camera.w, height / camera.h);
-  return { s, ox: (width - camera.w * s) / 2 - camera.x * s, oy: (height - camera.h * s) / 2 - camera.y * s };
-}
-
 /** The map cell under a canvas position, or null outside the map. */
-export function screenToCell(width: number, height: number, camera: Box, x: number, y: number): Cell | null {
-  const v = makeView(width, height, camera);
+export function screenToCell(
+  width: number,
+  height: number,
+  camera: Box,
+  insets: Insets,
+  x: number,
+  y: number,
+): Cell | null {
+  const v = makeView(width, height, camera, insets);
   const ne = Math.floor((x - v.ox) / v.s);
   const se = Math.floor((y - v.oy) / v.s);
   return ne >= 0 && se >= 0 && ne < COLS && se < ROWS ? { ne, se } : null;
@@ -1103,8 +1102,8 @@ function drawSpotlight(
 }
 
 export function drawGuide(ctx: CanvasRenderingContext2D, model: GuideModel, input: DrawInput): void {
-  const { width, height, camera, scene, now, hover, ghostPins, crowdClock } = input;
-  const v = makeView(width, height, camera);
+  const { width, height, camera, insets, scene, now, hover, ghostPins, crowdClock } = input;
+  const v = makeView(width, height, camera, insets);
   ctx.save();
   drawBackdrop(ctx, width, height, v);
   drawStrip(ctx, model, scene, v);

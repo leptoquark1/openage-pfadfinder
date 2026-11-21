@@ -1,6 +1,7 @@
 import { Integrator, Pathfinder, portalAStar } from '@leptoquark1/openage-pfadfinder';
 import { COST_IMPASSABLE, COST_MIN, PathResult } from '@leptoquark1/openage-pfadfinder/shared';
 import { describe, expect, it } from 'vitest';
+import { layoutGuide, makeView } from '../src/guide/layout.js';
 import { buildModel } from '../src/guide/model.js';
 import { replayField } from '../src/guide/observe.js';
 import { Player } from '../src/guide/player.js';
@@ -195,6 +196,78 @@ describe('guide: timeline', () => {
   });
 });
 
+describe('guide: floating layout', () => {
+  const sizes = [
+    [1920, 1080],
+    [1600, 950],
+    [1280, 720],
+    [1024, 768],
+  ] as const;
+
+  it.each(scenarios.map(s => [s.id, s] as const))('%s keeps the card on screen and off the map', (_id, scenario) => {
+    const { steps } = buildTimeline(scenario);
+    for (const [width, height] of sizes) {
+      for (const step of steps) {
+        const { card, insets } = layoutGuide(width, height, step.side, step.focus, step.scene.camera, 320);
+        expect(card.x).toBeGreaterThanOrEqual(0);
+        expect(card.x + card.width).toBeLessThanOrEqual(width);
+        expect(card.y).toBeGreaterThanOrEqual(0);
+        expect(card.y + Math.min(320, card.maxHeight)).toBeLessThanOrEqual(height);
+
+        const view = makeView(width, height, step.scene.camera, insets);
+        const mapLeft = view.ox + step.scene.camera.x * view.s;
+        const mapRight = mapLeft + step.scene.camera.w * view.s;
+        expect(card.x >= mapRight - 0.01 || card.x + card.width <= mapLeft + 0.01).toBe(true);
+      }
+    }
+  });
+
+  it('stacks the card below the map on a narrow screen', () => {
+    const step = buildTimeline(SCENARIOS[0]!).steps[0]!;
+    const { card, insets } = layoutGuide(390, 844, step.side, step.focus, step.scene.camera, 300);
+    expect(card.x + card.width).toBeLessThanOrEqual(390);
+    expect(card.y).toBeGreaterThanOrEqual(844 - insets.bottom);
+  });
+
+  it('keeps the side while the camera holds still within a chapter', () => {
+    for (const scenario of scenarios) {
+      const { steps } = buildTimeline(scenario);
+      steps.forEach((step, i) => {
+        const before = steps[i - 1];
+        if (before?.chapter === step.chapter && before.scene.camera === step.scene.camera) {
+          expect(step.side).toBe(before.side);
+        }
+      });
+    }
+  });
+});
+
+describe('guide: contextual interface', () => {
+  const stepsOf = (id: string) => buildTimeline(SCENARIOS.find(s => s.id === id)!).steps;
+
+  it('offers no tools while the map is being built', () => {
+    const steps = stepsOf('fortress');
+    for (const chapter of ['sectors', 'portals', 'areas', 'search'] as const) {
+      for (const step of steps.filter(s => s.chapter === chapter)) {
+        expect(step.interaction?.tools ?? []).toEqual([]);
+      }
+    }
+    expect(steps[0]!.interaction).toBeNull();
+  });
+
+  it('offers the tools a chapter needs', () => {
+    const steps = stepsOf('fortress');
+    expect(steps.find(s => s.chapter === 'request')!.interaction!.tools).toEqual(['start', 'target']);
+    expect(steps.at(-1)!.interaction!.tools).toContain('wall');
+  });
+
+  it('offers a way out when no route exists', () => {
+    const last = stepsOf('sealed').at(-1)!;
+    expect(last.title).toBe('No route exists');
+    expect(last.interaction!.tools).toContain('erase');
+  });
+});
+
 describe('guide: player', () => {
   const player = () => {
     const p = new Player();
@@ -202,41 +275,44 @@ describe('guide: player', () => {
     return p;
   };
 
-  it('plays through the steps and stops at the end', () => {
+  it('never advances on its own', () => {
     const p = player();
-    p.play();
-    expect(p.index).toBe(1);
-    p.tick(50);
-    expect(p.t).toBeCloseTo(0.5);
-    p.tick(1000);
-    expect(p.index).toBe(3);
-    expect(p.t).toBe(1);
-    expect(p.playing).toBe(false);
-  });
-
-  it('pauses mid-step and keeps the position', () => {
-    const p = player();
-    p.play();
-    p.tick(30);
-    p.pause();
-    p.tick(500);
-    expect(p.index).toBe(1);
-    expect(p.t).toBeCloseTo(0.3);
-  });
-
-  it('steps forward one animation at a time', () => {
-    const p = player();
+    p.tick(100_000);
+    expect([p.index, p.t]).toEqual([0, 1]);
     p.stepForward();
-    expect([p.index, p.t]).toEqual([1, 0]);
-    p.tick(1000);
+    p.tick(100_000);
     expect([p.index, p.t]).toEqual([1, 1]);
   });
 
-  it('finishes a running animation before moving on', () => {
+  it('animates the step it moved to', () => {
+    const p = player();
+    p.stepForward();
+    expect([p.index, p.t]).toEqual([1, 0]);
+    p.tick(50);
+    expect(p.t).toBeCloseTo(0.5);
+  });
+
+  it('moves on at once while a step is still animating', () => {
     const p = player();
     p.stepForward();
     p.tick(10);
     p.stepForward();
+    expect([p.index, p.t]).toEqual([2, 0]);
+  });
+
+  it('finishes the last step instead of running past it', () => {
+    const p = player();
+    p.seek(3);
+    expect([p.index, p.t]).toEqual([3, 0]);
+    p.stepForward();
+    expect([p.index, p.t]).toEqual([3, 1]);
+  });
+
+  it('animates a jump forward and shows a jump back finished', () => {
+    const p = player();
+    p.seek(2);
+    expect([p.index, p.t]).toEqual([2, 0]);
+    p.seek(1);
     expect([p.index, p.t]).toEqual([1, 1]);
   });
 
@@ -254,41 +330,15 @@ describe('guide: player', () => {
     expect([p.index, p.t]).toEqual([0, 1]);
   });
 
-  it('restarts when played at the end', () => {
-    const p = player();
-    p.seek(3);
-    p.play();
-    expect([p.index, p.t, p.playing]).toEqual([0, 0, true]);
-  });
-
-  it('restarts on the first step, so it gets its full time on screen', () => {
-    const p = player();
-    p.seek(2);
-    p.restart();
-    expect([p.index, p.t, p.playing]).toEqual([0, 0, true]);
-    p.tick(50);
-    expect([p.index, p.t]).toEqual([0, 0.5]);
-  });
-
-  it('only notifies on discrete changes while playing', () => {
+  it('notifies when the position changes, not on animation frames', () => {
     const p = player();
     let notified = 0;
     p.subscribe(() => notified++);
-    p.restart();
-    notified = 0;
-    p.tick(10);
-    p.tick(10);
-    expect(notified).toBe(0);
-    p.tick(100);
+    p.stepForward();
     expect(notified).toBe(1);
-  });
-
-  it('applies the speed', () => {
-    const p = player();
-    p.setSpeed(4);
-    p.play();
     p.tick(10);
-    expect(p.t).toBeCloseTo(0.4);
+    p.tick(1000);
+    expect(notified).toBe(1);
   });
 });
 

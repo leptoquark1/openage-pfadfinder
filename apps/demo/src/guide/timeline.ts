@@ -80,6 +80,17 @@ export interface Scene {
   readonly crowd: number;
 }
 
+export type Tool = 'inspect' | 'start' | 'target' | 'wall' | 'mud' | 'erase';
+
+/** What the reader can do on the map during a step. */
+export interface StepInteraction {
+  /** Canvas tools worth offering here; `inspect` is the implicit default. */
+  readonly tools: readonly Tool[];
+  /** Hovering a cell shows its bytes. */
+  readonly inspect: boolean;
+  readonly hint: string;
+}
+
 export interface GuideStep {
   readonly chapter: ChapterId;
   readonly title: string;
@@ -94,7 +105,15 @@ export interface GuideStep {
   readonly scene: Scene;
   /** Index of the A* event whose state the open-set table shows; -1 for none. */
   readonly event: number;
+  /** The part of the map this step is about, in cell coordinates. */
+  readonly focus: Box;
+  /** The side of the map its explanation floats on. */
+  readonly side: 'left' | 'right';
+  /** What the reader can do on the map; null when the step needs no interface. */
+  readonly interaction: StepInteraction | null;
 }
+
+type DraftStep = Omit<GuideStep, 'side'>;
 
 export interface Timeline {
   readonly model: GuideModel;
@@ -114,6 +133,68 @@ const focus = (sector: SectorView): Box => ({
   h: SECTOR_SIZE + 2.6,
 });
 
+const sectorBox = (sector: SectorView): Box => ({ x: sector.ne, y: sector.se, w: SECTOR_SIZE, h: SECTOR_SIZE });
+const cellBox = (cell: Cell): Box => ({ x: cell.ne, y: cell.se, w: 1, h: 1 });
+const pointBox = (x: number, y: number): Box => ({ x: x - 1, y: y - 1, w: 2, h: 2 });
+/** The two rows or columns of cells that face each other across a sector border. */
+const borderBox = (sector: SectorView, northSouth: boolean): Box =>
+  northSouth
+    ? { x: sector.ne, y: sector.se + SECTOR_SIZE - 1, w: SECTOR_SIZE, h: 2 }
+    : { x: sector.ne + SECTOR_SIZE - 1, y: sector.se, w: 2, h: SECTOR_SIZE };
+
+const PAINT: StepInteraction = {
+  tools: ['wall', 'mud', 'erase'],
+  inspect: true,
+  hint: 'Paint the map, or hover a cell to read its byte.',
+};
+const GRAPH_HOVER: StepInteraction = { tools: [], inspect: false, hint: 'Hover a portal to see its edge costs.' };
+const PINS: StepInteraction = {
+  tools: ['start', 'target'],
+  inspect: false,
+  hint: 'Drag a pin to ask for another route.',
+};
+const BYTES: StepInteraction = { tools: [], inspect: true, hint: 'Hover a cell to read its real bytes.' };
+const UNBLOCK: StepInteraction = {
+  tools: ['erase', 'start', 'target'],
+  inspect: false,
+  hint: 'Erase a wall or move a pin to open a way.',
+};
+const SANDBOX: StepInteraction = {
+  tools: ['start', 'target', 'wall', 'mud', 'erase'],
+  inspect: true,
+  hint: 'Change the map. The route and the crowd follow.',
+};
+
+/**
+ * Puts each explanation on the side nearest to what it explains. The side only
+ * changes with the chapter or the camera, so the map holds still while the
+ * reader steps through one view.
+ */
+function assignSides(steps: readonly DraftStep[]): GuideStep[] {
+  const placed: GuideStep[] = [];
+  let side: GuideStep['side'] = 'right';
+  let from = 0;
+  while (from < steps.length) {
+    const { chapter, scene } = steps[from]!;
+    let to = from + 1;
+    while (to < steps.length && steps[to]!.chapter === chapter && steps[to]!.scene.camera === scene.camera) {
+      to++;
+    }
+    const run = steps.slice(from, to);
+    const center = run.reduce((sum, step) => sum + step.focus.x + step.focus.w / 2, 0) / run.length / COLS;
+    if (center < 0.4) {
+      side = 'left';
+    } else if (center > 0.6) {
+      side = 'right';
+    }
+    for (const step of run) {
+      placed.push({ ...step, side });
+    }
+    from = to;
+  }
+  return placed;
+}
+
 const cellText = (cell: Cell) => `(${cell.ne}, ${cell.se})`;
 const portalList = (ids: readonly number[]) => (ids.length ? ids.map(id => `P${id}`).join(', ') : 'none');
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -132,7 +213,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
   const model = buildModel(scenario);
   const { sectors, edges, portals, graphEdges, search, fields } = model;
   const { start, target, costs } = scenario;
-  const steps: GuideStep[] = [];
+  const steps: DraftStep[] = [];
 
   let scene: Scene = {
     camera: MEMORY,
@@ -155,14 +236,16 @@ export function buildTimeline(scenario: Scenario): Timeline {
   };
 
   const add = (
-    step: Omit<GuideStep, 'scene' | 'event' | 'stack'> & {
+    step: Omit<DraftStep, 'scene' | 'event' | 'stack' | 'focus' | 'interaction'> & {
       readonly stack?: readonly string[];
       readonly event?: number;
+      readonly focus?: Box;
+      readonly interaction?: StepInteraction;
     },
     patch: Partial<Scene>,
   ) => {
     scene = { ...scene, ...patch };
-    steps.push({ stack: [], event: -1, ...step, scene });
+    steps.push({ stack: [], event: -1, focus: scene.camera, interaction: null, ...step, scene });
   };
 
   // --- Cost map ---------------------------------------------------------
@@ -208,6 +291,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
       call: 'costs[idx] = COST_IMPASSABLE',
       returns: `${walls} × 255 · ${mud} × ${COST_MUD} · ${COLS * ROWS - walls - mud} × 1`,
       duration: 2800,
+      interaction: PAINT,
     },
     {},
   );
@@ -235,6 +319,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: `grid.addSector(new Sector(${sector.id}, { x: ${sector.x}, y: ${sector.y} }, field))`,
         returns: 'void',
         duration: 620,
+        focus: sectorBox(sector),
       },
       { slices: sector.id + 1 },
     );
@@ -270,6 +355,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: `sector${edge.a}.findPortals(sector${edge.b}, PortalDirection.${direction}, allocateId)`,
         returns: `[${portalList(edge.portalIds)}]`,
         duration: 900,
+        focus: borderBox(sectors[edge.a]!, edge.northSouth),
       },
       { edges: i + 1 },
     );
@@ -303,6 +389,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: `sector${sector.id}.getAreas()`,
         returns: `${plural(sector.areaCount, 'area')}`,
         duration: 760,
+        focus: sectorBox(sector),
       },
       { areas: sector.id + 1 },
     );
@@ -319,6 +406,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
       call: 'grid.initPortalNodes()',
       returns: `Map(${portals.size}) of PortalNode`,
       duration: 3400,
+      interaction: GRAPH_HOVER,
     },
     { graph: 1 },
   );
@@ -335,6 +423,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
       call: `pathfinder.getFlowRoute({ gridId: 0, start: ${cellText(start)}, target: ${cellText(target)} })`,
       returns: '…',
       duration: 2800,
+      interaction: PINS,
     },
     { pins: 1 },
   );
@@ -348,6 +437,8 @@ export function buildTimeline(scenario: Scenario): Timeline {
       call: `grid.globalToLocal(${start.ne}, ${start.se})`,
       returns: `{ sectorX: ${startInfo.sectorX}, sectorY: ${startInfo.sectorY}, localNe: ${startInfo.localNe}, localSe: ${startInfo.localSe} }`,
       duration: 3400,
+      focus: cellBox(start),
+      interaction: PINS,
     },
     { coords: 1 },
   );
@@ -362,6 +453,8 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: 'sector.getAreas()[startIdx] === sector.getAreas()[targetIdx]',
         returns: 'true',
         duration: 2800,
+        focus: cellBox(start),
+        interaction: PINS,
       },
       { coords: 0 },
     );
@@ -376,6 +469,8 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: 'portalsReachableFrom(sector, localNe, localSe)',
         returns: `start [${portalList(model.startPortals)}] · target [${portalList(model.targetPortals)}]`,
         duration: 3200,
+        focus: cellBox(start),
+        interaction: PINS,
       },
       { coords: 0, reach: 1 },
     );
@@ -400,6 +495,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         returns: `${plural(at, 'node')} in the open set`,
         duration: 2800,
         event: at - 1,
+        focus: cellBox(start),
       },
       { astar: at, reach: 0.35 },
     );
@@ -431,6 +527,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
           returns: `P${pop.portal} · f = ${state?.f ?? 0}`,
           duration: isGoal ? 1800 : 1250,
           event: end - 1,
+          focus: pointBox(portals.get(pop.portal)!.x, portals.get(pop.portal)!.y),
         },
         { astar: end },
       );
@@ -463,6 +560,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
           call: 'pathfinder.getFlowRoute(request)',
           returns: 'null · PathResult.NOT_FOUND',
           duration: 4000,
+          interaction: UNBLOCK,
           event: events.length - 1,
         },
         { chain: search.partial ? 1 : 0, reach: 0 },
@@ -479,6 +577,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: 'pathfinder.getFlowRoute(request)',
         returns: 'null · PathResult.NOT_FOUND',
         duration: 3200,
+        interaction: UNBLOCK,
       },
       { reach: 0 },
     );
@@ -504,6 +603,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: 'new IntegrationField(6)',
         returns: 'IntegrationField',
         duration: 2600,
+        interaction: BYTES,
       },
       { camera: focus(targetSector), graph: 0.18 },
     );
@@ -523,6 +623,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
           call: 'field.integrateLos(costField, target)',
           returns: `${stop} of ${targetField.losWrites} writes`,
           duration: 1100,
+          interaction: BYTES,
         },
         { fieldWrites: setAt(scene.fieldWrites, 0, stop) },
       );
@@ -540,6 +641,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
           call: 'field.integrateCostFromWavefront(costField, blocked)',
           returns: `${stop} of ${targetField.writes.length} writes`,
           duration: 1100,
+          interaction: BYTES,
         },
         { fieldWrites: setAt(scene.fieldWrites, 0, stop) },
       );
@@ -555,6 +657,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: 'flowField.build(integrationField)',
         returns: 'FlowField',
         duration: 2800,
+        interaction: BYTES,
       },
       { fieldFlow: setAt(scene.fieldFlow, 0, size) },
     );
@@ -579,6 +682,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
           call: `field.integrateCostPortal(costField, ${field.nextSector}, portal${field.portal})`,
           returns: `${field.writes.length} writes`,
           duration: index === 1 ? 2800 : 1500,
+          interaction: BYTES,
         },
         { camera: focus(sector), fieldWrites: setAt(scene.fieldWrites, index, field.writes.length) },
       );
@@ -592,6 +696,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
           call: `flowField.buildPortal(field, next, ${field.nextSector}, portal${field.portal})`,
           returns: 'FlowField',
           duration: 1300,
+          interaction: BYTES,
         },
         { fieldFlow: setAt(scene.fieldFlow, index, size) },
       );
@@ -608,6 +713,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: 'route.getSectorIds()',
         returns: `[${model.routeSectors.join(', ')}]`,
         duration: 2800,
+        interaction: BYTES,
       },
       { camera: FULL, route: 1, graph: 0, chain: 0 },
     );
@@ -622,6 +728,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
           call: `route.walk(${cellText(start)})`,
           returns: `Path { FOUND, ${plural(model.waypoints.length, 'waypoint')} }`,
           duration: 4200,
+          interaction: BYTES,
         },
         { walk: 1 },
       );
@@ -638,6 +745,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
         call: 'route.next(unit.ne, unit.se)',
         returns: 'TileDelta | null',
         duration: 7000,
+        interaction: SANDBOX,
       },
       { crowd: 1 },
     );
@@ -647,7 +755,7 @@ export function buildTimeline(scenario: Scenario): Timeline {
     const first = steps.findIndex(step => step.chapter === chapter.id);
     return first >= 0 ? [{ ...chapter, first }] : [];
   });
-  return { model, steps, chapters };
+  return { model, steps: assignSides(steps), chapters };
 }
 
 /** The scene part way through a step. */

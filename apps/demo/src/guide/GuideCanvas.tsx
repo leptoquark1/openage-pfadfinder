@@ -1,11 +1,10 @@
 import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder/shared';
 import { useEffect, useRef } from 'react';
+import type { Insets } from './layout.js';
 import type { Player } from './player.js';
 import { drawGuide, screenToCell } from './render.js';
 import { type Cell, COST_MUD, type Scenario, withCost, withPin } from './scenarios.js';
-import { type Box, mixScene, type Timeline } from './timeline.js';
-
-export type Tool = 'inspect' | 'start' | 'target' | 'wall' | 'mud' | 'erase';
+import { type Box, mixScene, type Timeline, type Tool } from './timeline.js';
 
 const TOOL_COST: Partial<Record<Tool, number>> = {
   wall: COST_IMPASSABLE,
@@ -13,25 +12,36 @@ const TOOL_COST: Partial<Record<Tool, number>> = {
   erase: COST_MIN,
 };
 
+/** The hovered cell and the pointer position on the canvas. */
+export interface HoverPoint {
+  readonly cell: Cell;
+  readonly x: number;
+  readonly y: number;
+}
+
 interface GuideCanvasProps {
   player: Player;
   timeline: Timeline;
   tool: Tool;
+  /** Tools the current step offers; pins can only be dragged when theirs is included. */
+  tools: readonly Tool[];
+  /** Whether the current step reacts to the pointer at all. */
+  interactive: boolean;
+  insets: Insets;
   onEdit: (edit: (scenario: Scenario) => Scenario) => void;
-  onHover: (cell: Cell | null) => void;
-  /** Called every frame with the overall progress, 0..1. */
-  onProgress: (progress: number) => void;
+  onHover: (hover: HoverPoint | null) => void;
 }
 
 const ease = (t: number) => t * t * (3 - 2 * t);
+const sameCell = (a: Cell, b: Cell) => a.ne === b.ne && a.se === b.se;
 
-export function GuideCanvas({ player, timeline, tool, onEdit, onHover, onProgress }: GuideCanvasProps) {
+export function GuideCanvas({ player, timeline, tool, tools, interactive, insets, onEdit, onHover }: GuideCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // The render loop is started once; live props reach it through refs.
-  const live = useRef({ timeline, tool, onEdit, onHover, onProgress });
-  live.current = { timeline, tool, onEdit, onHover, onProgress };
+  const live = useRef({ timeline, tool, tools, interactive, insets, onEdit, onHover });
+  live.current = { timeline, tool, tools, interactive, insets, onEdit, onHover };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -59,16 +69,26 @@ export function GuideCanvas({ player, timeline, tool, onEdit, onHover, onProgres
     observer.observe(container);
 
     let camera: Box | null = null;
+    let margins: Insets | null = null;
     let hover: Cell | null = null;
     let drag: 'start' | 'target' | 'paint' | null = null;
     let lastPaint: Cell | null = null;
 
     const cellOf = (e: PointerEvent): Cell | null => {
-      if (!camera) {
+      if (!camera || !margins || !live.current.interactive) {
         return null;
       }
       const rect = canvas.getBoundingClientRect();
-      return screenToCell(width, height, camera, e.clientX - rect.left, e.clientY - rect.top);
+      return screenToCell(width, height, camera, margins, e.clientX - rect.left, e.clientY - rect.top);
+    };
+
+    const pinAt = (cell: Cell): 'start' | 'target' | null => {
+      const { timeline: current, tools: offered } = live.current;
+      const { start, target } = current.model.scenario;
+      if (offered.includes('start') && sameCell(cell, start)) {
+        return 'start';
+      }
+      return offered.includes('target') && sameCell(cell, target) ? 'target' : null;
     };
 
     const paintTo = (cell: Cell) => {
@@ -92,38 +112,37 @@ export function GuideCanvas({ player, timeline, tool, onEdit, onHover, onProgres
       if (!cell || e.button !== 0) {
         return;
       }
-      const { tool: active, timeline: current } = live.current;
-      const { start, target } = current.model.scenario;
+      const active = live.current.tool;
       if (active === 'start' || active === 'target') {
         drag = active;
         live.current.onEdit(scenario => withPin(scenario, active, cell));
       } else if (active === 'inspect') {
-        if (cell.ne === start.ne && cell.se === start.se) {
-          drag = 'start';
-        } else if (cell.ne === target.ne && cell.se === target.se) {
-          drag = 'target';
-        }
+        drag = pinAt(cell);
       } else {
         drag = 'paint';
         lastPaint = null;
         paintTo(cell);
       }
       if (drag) {
+        live.current.onHover(null);
         canvas.setPointerCapture(e.pointerId);
       }
     };
 
     const onMove = (e: PointerEvent) => {
       const cell = cellOf(e);
-      if (cell?.ne !== hover?.ne || cell?.se !== hover?.se) {
-        hover = cell;
-        live.current.onHover(cell);
-        if (cell && (drag === 'start' || drag === 'target')) {
-          const pin = drag;
-          live.current.onEdit(scenario => withPin(scenario, pin, cell));
-        } else if (cell && drag === 'paint') {
-          paintTo(cell);
-        }
+      if (cell?.ne === hover?.ne && cell?.se === hover?.se) {
+        return;
+      }
+      hover = cell;
+      if (cell && (drag === 'start' || drag === 'target')) {
+        const pin = drag;
+        live.current.onEdit(scenario => withPin(scenario, pin, cell));
+      } else if (cell && drag === 'paint') {
+        paintTo(cell);
+      } else if (!drag) {
+        const rect = canvas.getBoundingClientRect();
+        live.current.onHover(cell && { cell, x: e.clientX - rect.left, y: e.clientY - rect.top });
       }
     };
 
@@ -151,24 +170,32 @@ export function GuideCanvas({ player, timeline, tool, onEdit, onHover, onProgres
     const frame = (now: number) => {
       const dt = Math.min(now - last, 100);
       last = now;
-      player.tick(dt);
+      player.tick(reducedMotion ? Number.POSITIVE_INFINITY : dt);
 
-      const { timeline: current, tool: activeTool } = live.current;
+      const { timeline: current, tool: activeTool, interactive: reacts, insets: goalInsets } = live.current;
       const index = Math.min(player.index, current.steps.length - 1);
       const step = current.steps[index]!;
       const previous = current.steps[index - 1]?.scene ?? step.scene;
       const scene = mixScene(previous, step.scene, ease(player.t));
 
       const goal = scene.camera;
-      if (!camera || reducedMotion) {
+      if (!camera || !margins || reducedMotion) {
         camera = goal;
+        margins = goalInsets;
       } else {
         const k = 1 - Math.exp(-dt / 170);
+        const towards = (from: number, to: number) => from + (to - from) * k;
         camera = {
-          x: camera.x + (goal.x - camera.x) * k,
-          y: camera.y + (goal.y - camera.y) * k,
-          w: camera.w + (goal.w - camera.w) * k,
-          h: camera.h + (goal.h - camera.h) * k,
+          x: towards(camera.x, goal.x),
+          y: towards(camera.y, goal.y),
+          w: towards(camera.w, goal.w),
+          h: towards(camera.h, goal.h),
+        };
+        margins = {
+          top: towards(margins.top, goalInsets.top),
+          right: towards(margins.right, goalInsets.right),
+          bottom: towards(margins.bottom, goalInsets.bottom),
+          left: towards(margins.left, goalInsets.left),
         };
       }
 
@@ -176,26 +203,30 @@ export function GuideCanvas({ player, timeline, tool, onEdit, onHover, onProgres
       const finale = !reducedMotion && index === current.steps.length - 1 && player.t >= 1 && step.chapter === 'crowd';
       finaleStart = finale ? (finaleStart ?? now) : null;
 
+      const shownHover = reacts ? hover : null;
       if (width > 0 && height > 0) {
         drawGuide(ctx, current.model, {
           width,
           height,
           camera,
+          insets: margins,
           scene,
           now,
-          hover,
+          hover: shownHover,
           ghostPins: activeTool !== 'inspect',
           crowdClock: finaleStart === null ? null : (now - finaleStart) / 1000,
         });
       }
 
-      const { start, target } = current.model.scenario;
-      const onPin =
-        hover !== null &&
-        ((hover.ne === start.ne && hover.se === start.se) || (hover.ne === target.ne && hover.se === target.se));
-      canvas.style.cursor = drag ? 'grabbing' : activeTool !== 'inspect' ? 'crosshair' : onPin ? 'grab' : 'default';
+      const onPin = shownHover !== null && pinAt(shownHover) !== null;
+      canvas.style.cursor = drag
+        ? 'grabbing'
+        : reacts && activeTool !== 'inspect'
+          ? 'crosshair'
+          : onPin
+            ? 'grab'
+            : 'default';
 
-      live.current.onProgress((index + player.t) / current.steps.length);
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);

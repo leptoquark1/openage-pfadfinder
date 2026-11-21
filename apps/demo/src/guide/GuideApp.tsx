@@ -1,80 +1,29 @@
-import type { LucideIcon } from 'lucide-react';
-import {
-  ArrowLeft,
-  BrickWall,
-  ChevronFirst,
-  ChevronLast,
-  CircleDot,
-  Eraser,
-  Flag,
-  MousePointer2,
-  Pause,
-  Play,
-  RotateCcw,
-  SkipBack,
-  SkipForward,
-  StepBack,
-  StepForward,
-  Waves,
-} from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { GuideCanvas, type Tool } from './GuideCanvas.js';
-import { ApiCall, Inspector, Legend, OpenSet, ProgramListing, StepStory } from './panels.js';
+import { GuideCanvas, type HoverPoint } from './GuideCanvas.js';
+import { layoutGuide } from './layout.js';
+import { ChapterMenu, StepDock } from './navigation.js';
+import { ApiCall, Inspector, Legend, OpenSet, StepStory, TryIt } from './panels.js';
 import { Player } from './player.js';
-import { type Cell, SCENARIOS, type Scenario } from './scenarios.js';
-import { buildTimeline, CHAPTERS, inspectCell, type Timeline } from './timeline.js';
+import { SCENARIOS, type Scenario } from './scenarios.js';
+import { buildTimeline, CHAPTERS, type ChapterId, inspectCell, type Timeline, type Tool } from './timeline.js';
 
-const SPEEDS = [0.5, 1, 2, 4] as const;
+const NO_TOOLS: readonly Tool[] = [];
 
-const TOOLS: readonly { id: Tool; label: string; icon: LucideIcon }[] = [
-  { id: 'inspect', label: 'Inspect', icon: MousePointer2 },
-  { id: 'start', label: 'Start', icon: CircleDot },
-  { id: 'target', label: 'Target', icon: Flag },
-  { id: 'wall', label: 'Wall', icon: BrickWall },
-  { id: 'mud', label: 'Mud', icon: Waves },
-  { id: 'erase', label: 'Erase', icon: Eraser },
-];
-
-function IconButton({
-  icon: Icon,
-  label,
-  onClick,
-  primary = false,
-  disabled = false,
-}: {
-  icon: LucideIcon;
-  label: string;
-  onClick: () => void;
-  primary?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-30 ${
-        primary
-          ? 'h-10 w-10 bg-mob text-bg hover:bg-mob/85'
-          : 'h-8 w-8 text-muted enabled:hover:bg-panel enabled:hover:text-fg'
-      }`}
-    >
-      <Icon size={primary ? 19 : 16} strokeWidth={2} fill={primary && Icon !== RotateCcw ? 'currentColor' : 'none'} />
-    </button>
-  );
-}
-
-/** The step to show after the map changed: the end of the chapter we were in. */
+/** The step to show after the map changed: the same place in the same chapter, if it still exists. */
 function stepAfterEdit(previous: Timeline, index: number, next: Timeline): number {
-  const chapter = previous.steps[Math.min(index, previous.steps.length - 1)]!.chapter;
+  const at = Math.min(index, previous.steps.length - 1);
+  const chapter = previous.steps[at]!.chapter;
+  const first = previous.steps.findIndex(step => step.chapter === chapter);
+  const wasLast = previous.steps[at + 1]?.chapter !== chapter;
+
   const order = CHAPTERS.findIndex(c => c.id === chapter);
   for (let i = order; i >= 0; i--) {
     const id = CHAPTERS[i]!.id;
     const last = next.steps.findLastIndex(step => step.chapter === id);
     if (last >= 0) {
-      return last;
+      const nextFirst = next.steps.findIndex(step => step.chapter === id);
+      return id === chapter && !wasLast ? Math.min(nextFirst + at - first, last) : last;
     }
   }
   return 0;
@@ -94,45 +43,47 @@ function chapterStep(timeline: Timeline, index: number, direction: 1 | -1): numb
 export function GuideApp() {
   const player = useMemo(() => new Player(), []);
   const [scenario, setScenario] = useState<Scenario>(SCENARIOS[0]!);
-  const [tool, setTool] = useState<Tool>('inspect');
-  const [hover, setHover] = useState<Cell | null>(null);
+  const [chosen, setChosen] = useState<{ tool: Tool; chapter: ChapterId } | null>(null);
+  const [hover, setHover] = useState<HoverPoint | null>(null);
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [cardHeight, setCardHeight] = useState(0);
+  const [settled, setSettled] = useState(false);
   const timeline = useMemo(() => buildTimeline(scenario), [scenario]);
   useSyncExternalStore(player.subscribe, player.getVersion);
 
-  const restart = useRef(true);
   const loaded = useRef<Timeline | null>(null);
-  const progressBar = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     if (loaded.current === timeline) {
       return;
     }
     const durations = timeline.steps.map(step => step.duration);
-    if (restart.current || !loaded.current) {
-      restart.current = false;
-      player.load(durations, 0);
-      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        player.restart();
-      }
-    } else {
-      player.load(durations, stepAfterEdit(loaded.current, player.index, timeline));
-    }
+    player.load(durations, loaded.current ? stepAfterEdit(loaded.current, player.index, timeline) : 0);
     loaded.current = timeline;
   }, [player, timeline]);
 
-  const handleEdit = useCallback((edit: (current: Scenario) => Scenario) => setScenario(edit), []);
-  const handleProgress = useCallback((progress: number) => {
-    progressBar.current?.style.setProperty('transform', `scaleX(${progress})`);
+  useLayoutEffect(() => {
+    const card = cardRef.current!;
+    const measure = () => setCardHeight(card.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    return () => observer.disconnect();
   }, []);
 
-  const chooseScenario = (next: Scenario) => {
-    if (next === scenario) {
-      player.restart();
-      return;
-    }
-    restart.current = true;
-    setScenario(next);
-  };
+  useEffect(() => {
+    const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    // The card only glides between steps, not into its first position.
+    const frame = requestAnimationFrame(() => setSettled(true));
+    return () => {
+      window.removeEventListener('resize', onResize);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const handleEdit = useCallback((edit: (current: Scenario) => Scenario) => setScenario(edit), []);
 
   const timelineRef = useRef(timeline);
   timelineRef.current = timeline;
@@ -140,12 +91,10 @@ export function GuideApp() {
     (direction: 1 | -1) => player.seek(chapterStep(timelineRef.current, player.index, direction)),
     [player],
   );
+  const seek = useCallback((step: number) => player.seek(step), [player]);
 
   const index = Math.min(player.index, timeline.steps.length - 1);
   const step = timeline.steps[index]!;
-  const chapterIndex = timeline.chapters.findIndex(c => c.id === step.chapter);
-  const chapter = timeline.chapters[chapterIndex]!;
-  const nextChapter = timeline.chapters[chapterIndex + 1];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -154,7 +103,11 @@ export function GuideApp() {
       }
       switch (e.key) {
         case ' ':
-          player.toggle();
+          // A focused button handles Space itself.
+          if (e.target instanceof Element && e.target.closest('button')) {
+            return;
+          }
+          player.stepForward();
           break;
         case 'ArrowRight':
           e.shiftKey ? seekChapter(1) : player.stepForward();
@@ -177,200 +130,81 @@ export function GuideApp() {
     return () => window.removeEventListener('keydown', onKey);
   }, [player, seekChapter]);
 
-  const info = hover ? inspectCell(timeline.model, step.scene, hover) : null;
-  const parts = [...new Set(timeline.chapters.map(c => c.part))];
+  const { interaction } = step;
+  const tools = interaction?.tools ?? NO_TOOLS;
+  const tool = chosen?.chapter === step.chapter && tools.includes(chosen.tool) ? chosen.tool : 'inspect';
+  const chooseTool = (next: Tool) => setChosen({ tool: next === tool ? 'inspect' : next, chapter: step.chapter });
+
+  const layout = layoutGuide(viewport.width, viewport.height, step.side, step.focus, step.scene.camera, cardHeight);
+  const inspected = interaction?.inspect && tool === 'inspect' ? hover : null;
+  const info = inspected ? inspectCell(timeline.model, step.scene, inspected.cell) : null;
+  const tooltipLeft = inspected !== null && inspected.x > viewport.width / 2;
+  const tooltipUp = inspected !== null && inspected.y > viewport.height / 2;
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-bg font-sans text-fg">
-      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-border px-3 py-2">
-        <a
-          href={import.meta.env.BASE_URL}
-          className="flex items-center gap-1.5 rounded-md px-1.5 py-1 font-mono text-[11px] text-muted hover:bg-panel hover:text-fg"
+    <div className="relative h-screen w-screen overflow-hidden bg-bg font-sans text-fg">
+      <h1 className="sr-only">Inside the Pathfinder</h1>
+
+      <GuideCanvas
+        player={player}
+        timeline={timeline}
+        tool={tool}
+        tools={tools}
+        interactive={interaction !== null}
+        insets={layout.insets}
+        onEdit={handleEdit}
+        onHover={setHover}
+      />
+
+      <a
+        href={import.meta.env.BASE_URL}
+        className="absolute top-3 left-3 z-20 flex h-9 items-center gap-1.5 rounded-lg border border-border bg-panel/85 px-2.5 font-mono text-[11px] text-muted backdrop-blur-sm transition-colors hover:bg-panel hover:text-fg"
+      >
+        <ArrowLeft size={14} aria-hidden="true" />
+        Demo
+      </a>
+
+      <ChapterMenu timeline={timeline} index={index} scenario={scenario} onSelect={seek} onScenario={setScenario} />
+
+      <div
+        ref={cardRef}
+        className={`absolute top-0 left-0 z-10 flex flex-col gap-3 overflow-y-auto rounded-2xl border border-border-strong bg-panel/92 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md ${
+          settled ? 'transition-transform duration-500 ease-out motion-reduce:transition-none' : ''
+        }`}
+        style={{
+          width: layout.card.width,
+          maxHeight: layout.card.maxHeight,
+          transform: `translate(${layout.card.x}px, ${layout.card.y}px)`,
+        }}
+      >
+        <StepStory step={step} />
+        <ApiCall step={step} />
+        {step.event >= 0 && <OpenSet timeline={timeline} step={step} />}
+        <Legend chapter={step.chapter} />
+        {interaction && <TryIt interaction={interaction} tool={tool} onTool={chooseTool} />}
+      </div>
+
+      {info && inspected && (
+        <div
+          className="pointer-events-none absolute z-40"
+          style={{
+            left: inspected.x + (tooltipLeft ? -16 : 16),
+            top: inspected.y + (tooltipUp ? -16 : 16),
+            transform: `translate(${tooltipLeft ? '-100%' : '0'}, ${tooltipUp ? '-100%' : '0'})`,
+          }}
         >
-          <ArrowLeft size={14} aria-hidden="true" />
-          Demo
-        </a>
-        <div className="flex items-center gap-2">
-          <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" width={20} height={20} />
-          <h1 className="font-mono text-[13px] font-semibold tracking-[0.04em]">Inside the Pathfinder</h1>
-        </div>
-
-        <fieldset aria-label="Map" className="ml-auto flex flex-wrap items-center gap-1">
-          {SCENARIOS.map(option => (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={scenario.id === option.id}
-              title={option.hint}
-              onClick={() => chooseScenario(option)}
-              className={`rounded-md px-2.5 py-1 font-mono text-[11px] transition-colors ${
-                scenario.id === option.id ? 'bg-border-strong text-fg' : 'text-muted hover:bg-panel hover:text-fg'
-              }`}
-            >
-              {option.name}
-            </button>
-          ))}
-        </fieldset>
-      </header>
-
-      <main className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <nav
-          aria-label="Chapters"
-          className="hidden w-[172px] shrink-0 overflow-y-auto border-r border-border p-2.5 xl:block"
-        >
-          {parts.map(part => (
-            <div key={part} className="mb-3">
-              <div className="mb-1 px-2 font-mono text-[10px] tracking-[0.1em] text-muted/70 uppercase">{part}</div>
-              {timeline.chapters
-                .filter(c => c.part === part)
-                .map(c => {
-                  const position = timeline.chapters.indexOf(c);
-                  const done = position < chapterIndex;
-                  const active = position === chapterIndex;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      aria-current={active ? 'step' : undefined}
-                      onClick={() => player.seek(c.first)}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-[6px] text-left font-mono text-[11.5px] transition-colors ${
-                        active ? 'bg-panel text-fg' : 'text-muted hover:bg-panel/60 hover:text-fg'
-                      }`}
-                    >
-                      <span
-                        className={`h-2 w-2 shrink-0 rounded-full ${
-                          active
-                            ? 'bg-mob shadow-[0_0_0_3px_rgba(79,209,197,0.22)]'
-                            : done
-                              ? 'bg-mob/50'
-                              : 'bg-border-strong'
-                        }`}
-                      />
-                      {c.title}
-                    </button>
-                  );
-                })}
-            </div>
-          ))}
-        </nav>
-
-        <div className="relative min-h-0 min-w-0 flex-1">
-          <GuideCanvas
-            player={player}
-            timeline={timeline}
-            tool={tool}
-            onEdit={handleEdit}
-            onHover={setHover}
-            onProgress={handleProgress}
-          />
-
-          <fieldset
-            aria-label="Canvas tool"
-            className="absolute top-3 left-3 flex gap-0.5 rounded-lg border border-border bg-panel/90 p-1 backdrop-blur-sm"
-          >
-            {TOOLS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={tool === id}
-                title={label}
-                onClick={() => setTool(id)}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10.5px] transition-colors ${
-                  tool === id ? 'bg-border-strong text-fg' : 'text-muted hover:text-fg'
-                }`}
-              >
-                <Icon size={13} aria-hidden="true" />
-                <span className="hidden 2xl:inline">{label}</span>
-              </button>
-            ))}
-          </fieldset>
-
-          <Legend chapter={step.chapter} />
-        </div>
-
-        <aside className="flex h-[42%] w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-border p-4 lg:h-auto lg:w-[410px] lg:border-t-0 lg:border-l">
-          <StepStory step={step} chapterTitle={chapter.title} part={chapter.part} />
-          <ApiCall step={step} />
-          {step.event >= 0 && <OpenSet timeline={timeline} step={step} />}
           <Inspector info={info} />
-          <ProgramListing step={step} />
-        </aside>
-      </main>
-
-      <footer className="flex shrink-0 items-center gap-2 border-t border-border px-3 py-2">
-        <IconButton icon={ChevronFirst} label="Restart (Home)" onClick={() => player.seek(0)} disabled={index === 0} />
-        <IconButton
-          icon={SkipBack}
-          label="Previous chapter (Shift + ←)"
-          onClick={() => seekChapter(-1)}
-          disabled={index === 0}
-        />
-        <IconButton icon={StepBack} label="Undo step (←)" onClick={() => player.stepBack()} disabled={index === 0} />
-        <IconButton
-          primary
-          icon={player.playing ? Pause : player.atEnd ? RotateCcw : Play}
-          label={player.playing ? 'Pause (Space)' : 'Play (Space)'}
-          onClick={() => player.toggle()}
-        />
-        <IconButton
-          icon={StepForward}
-          label="Next step (→)"
-          onClick={() => player.stepForward()}
-          disabled={player.atEnd}
-        />
-        <IconButton
-          icon={SkipForward}
-          label="Next chapter (Shift + →)"
-          onClick={() => seekChapter(1)}
-          disabled={!nextChapter}
-        />
-        <IconButton
-          icon={ChevronLast}
-          label="Jump to end (End)"
-          onClick={() => player.seek(player.last)}
-          disabled={player.atEnd}
-        />
-
-        <div className="relative mx-2 h-8 min-w-0 flex-1">
-          <div className="absolute inset-x-0 top-1/2 flex h-1.5 -translate-y-1/2 gap-[2px] overflow-hidden rounded-full">
-            {timeline.chapters.map((c, i) => {
-              const end = timeline.chapters[i + 1]?.first ?? timeline.steps.length;
-              return <div key={c.id} className="h-full bg-border-strong" style={{ flexGrow: end - c.first }} />;
-            })}
-          </div>
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full">
-            <div ref={progressBar} className="h-full w-full origin-left bg-mob" style={{ transform: 'scaleX(0)' }} />
-          </div>
-          <input
-            type="range"
-            aria-label="Timeline"
-            min={0}
-            max={timeline.steps.length - 1}
-            value={index}
-            onChange={e => player.seek(Number(e.target.value))}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          />
         </div>
+      )}
 
-        <span className="w-[66px] shrink-0 text-right font-mono text-[11px] text-muted tabular-nums">
-          {index + 1} / {timeline.steps.length}
-        </span>
-        <fieldset aria-label="Speed" className="flex shrink-0 gap-0.5 rounded-lg border border-border p-0.5">
-          {SPEEDS.map(speed => (
-            <button
-              key={speed}
-              type="button"
-              aria-pressed={player.speed === speed}
-              onClick={() => player.setSpeed(speed)}
-              className={`rounded-md px-1.5 py-0.5 font-mono text-[10.5px] ${
-                player.speed === speed ? 'bg-border-strong text-fg' : 'text-muted hover:text-fg'
-              }`}
-            >
-              {speed}×
-            </button>
-          ))}
-        </fieldset>
-      </footer>
+      <StepDock
+        timeline={timeline}
+        index={index}
+        onBack={() => player.stepBack()}
+        onNext={() => player.stepForward()}
+        onChapter={seekChapter}
+        onSeek={seek}
+      />
     </div>
   );
 }

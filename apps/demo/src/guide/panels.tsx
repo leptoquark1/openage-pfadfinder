@@ -8,11 +8,12 @@ import {
   INTEGRATE_TARGET_MASK,
   INTEGRATE_WAVEFRONT_BLOCKED_MASK,
 } from '@leptoquark1/openage-pfadfinder/shared';
-import { ChevronRight } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { BrickWall, ChevronRight, CircleDot, Eraser, Flag, MousePointer2, Waves } from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { LINE_OF, PROGRAM, type Token, type TokenKind, tokenize } from './program.js';
 import { INK } from './render.js';
-import type { ChapterId, CellInspection, GuideStep, Timeline } from './timeline.js';
+import type { ChapterId, CellInspection, GuideStep, StepInteraction, Timeline, Tool } from './timeline.js';
 
 const TOKEN_CLASS: Record<TokenKind, string> = {
   plain: 'text-fg/80',
@@ -63,23 +64,69 @@ function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="mb-1.5 font-mono text-[10px] tracking-[0.1em] text-muted uppercase">{children}</div>;
 }
 
-export function StepStory({ step, chapterTitle, part }: { step: GuideStep; chapterTitle: string; part: string }) {
+export function StepStory({ step }: { step: GuideStep }) {
   return (
     <section aria-live="polite">
-      <div className="mb-1 font-mono text-[10.5px] tracking-[0.06em] text-mob">
-        {part} · {chapterTitle}
-      </div>
-      <h2 className="mb-2 text-[19px] leading-tight font-semibold text-fg">{step.title}</h2>
-      <p className="min-h-[82px] text-[13.5px] leading-[1.6] text-[#B4BEC8]">
+      <h2 className="mb-1.5 text-[18px] leading-tight font-semibold text-fg">{step.title}</h2>
+      <p className="text-[13.5px] leading-[1.55] text-[#B4BEC8]">
         <Rich text={step.body} />
       </p>
     </section>
   );
 }
 
+const TOOL_INFO: Record<Tool, { label: string; icon: LucideIcon }> = {
+  inspect: { label: 'Inspect', icon: MousePointer2 },
+  start: { label: 'Start', icon: CircleDot },
+  target: { label: 'Target', icon: Flag },
+  wall: { label: 'Wall', icon: BrickWall },
+  mud: { label: 'Mud', icon: Waves },
+  erase: { label: 'Erase', icon: Eraser },
+};
+
+/** What the reader can try on the map in this step. */
+export function TryIt({
+  interaction,
+  tool,
+  onTool,
+}: {
+  interaction: StepInteraction;
+  tool: Tool;
+  onTool: (tool: Tool) => void;
+}) {
+  return (
+    <section className="border-t border-border pt-2.5">
+      <p className="font-mono text-[11px] leading-snug text-mob">{interaction.hint}</p>
+      {interaction.tools.length > 0 && (
+        <fieldset aria-label="Canvas tool" className="mt-2 flex gap-1">
+          {interaction.tools.map(id => {
+            const { label, icon: Icon } = TOOL_INFO[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={tool === id}
+                onClick={() => onTool(id)}
+                className={`flex flex-1 items-center justify-center gap-1 rounded-md border px-1 py-1 font-mono text-[10.5px] transition-colors ${
+                  tool === id
+                    ? 'border-mob/70 bg-mob/15 text-fg'
+                    : 'border-border text-muted hover:border-border-strong hover:text-fg'
+                }`}
+              >
+                <Icon size={13} aria-hidden="true" />
+                {label}
+              </button>
+            );
+          })}
+        </fieldset>
+      )}
+    </section>
+  );
+}
+
 export function ApiCall({ step }: { step: GuideStep }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-panel">
+    <section className="overflow-hidden rounded-lg border border-border bg-bg/60">
       {step.stack.length > 0 && (
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-3 py-1.5 font-mono text-[10.5px] text-muted">
           {step.stack.map((frame, i) => (
@@ -152,7 +199,7 @@ export function OpenSet({ timeline, step }: { timeline: Timeline; step: GuideSte
       <SectionLabel>
         Open set · {open.length} waiting · {closed} closed
       </SectionLabel>
-      <div className="max-h-[132px] overflow-auto rounded-lg border border-border bg-panel p-1.5 font-mono text-[10.5px]">
+      <div className="max-h-[132px] overflow-auto rounded-lg border border-border bg-bg/60 p-1.5 font-mono text-[10.5px]">
         {open.length === 0 && <div className="px-1 py-0.5 text-muted">empty</div>}
         {open.map((state, i) => (
           <div key={state.id} className="flex items-center gap-2 px-1 py-[2px]">
@@ -217,17 +264,8 @@ const flagNames = (value: number, names: Readonly<Record<number, string>>) =>
     .map(([, name]) => name)
     .join(' · ') || 'no flags';
 
-export function Inspector({ info }: { info: CellInspection | null }) {
-  if (!info) {
-    return (
-      <section>
-        <SectionLabel>Cell inspector</SectionLabel>
-        <div className="rounded-lg border border-dashed border-border px-3 py-3 font-mono text-[11px] text-muted">
-          Hover a cell to read its real bytes.
-        </div>
-      </section>
-    );
-  }
+/** The bytes of the hovered cell, as a tooltip beside the pointer. */
+export function Inspector({ info }: { info: CellInspection }) {
   const row = (label: string, value: ReactNode) => (
     <div className="flex justify-between gap-2">
       <span className="text-muted">{label}</span>
@@ -235,37 +273,34 @@ export function Inspector({ info }: { info: CellInspection | null }) {
     </div>
   );
   return (
-    <section>
-      <SectionLabel>Cell inspector</SectionLabel>
-      <div className="space-y-2 rounded-lg border border-border bg-panel px-3 py-2 font-mono text-[11px]">
-        <div className="grid grid-cols-2 gap-x-5 gap-y-0.5">
-          {row('global', `${info.cell.ne}, ${info.cell.se}`)}
-          {row('index', info.index)}
-          {row('sector', `S${info.sector}`)}
-          {row('local', `${info.local.ne}, ${info.local.se}`)}
-          {row('cost', info.cost)}
-          {row('integrated', info.integrated ?? '–')}
-        </div>
-        {info.integrationFlags !== null && (
-          <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
-            <div className="min-w-0">
-              <div className="text-muted">integration</div>
-              <div className="truncate text-[9.5px] text-mob">{flagNames(info.integrationFlags, INTEGRATION_BITS)}</div>
-            </div>
-            <Bits value={info.integrationFlags} labels={INTEGRATION_BITS} />
-          </div>
-        )}
-        {info.flow !== null && (
-          <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
-            <div className="min-w-0">
-              <div className="text-muted">flow · {DIRECTION_NAMES[info.flow & FLOW_DIR_MASK]}</div>
-              <div className="truncate text-[9.5px] text-mob">{flagNames(info.flow, FLOW_BITS)}</div>
-            </div>
-            <Bits value={info.flow} labels={FLOW_BITS} />
-          </div>
-        )}
+    <div className="w-[290px] space-y-2 rounded-lg border border-border-strong bg-panel/95 px-3 py-2 font-mono text-[11px] shadow-[0_8px_24px_rgba(0,0,0,0.5)] backdrop-blur-sm">
+      <div className="grid grid-cols-2 gap-x-5 gap-y-0.5">
+        {row('global', `${info.cell.ne}, ${info.cell.se}`)}
+        {row('index', info.index)}
+        {row('sector', `S${info.sector}`)}
+        {row('local', `${info.local.ne}, ${info.local.se}`)}
+        {row('cost', info.cost)}
+        {row('integrated', info.integrated ?? '–')}
       </div>
-    </section>
+      {info.integrationFlags !== null && (
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+          <div className="min-w-0">
+            <div className="text-muted">integration</div>
+            <div className="truncate text-[9.5px] text-mob">{flagNames(info.integrationFlags, INTEGRATION_BITS)}</div>
+          </div>
+          <Bits value={info.integrationFlags} labels={INTEGRATION_BITS} />
+        </div>
+      )}
+      {info.flow !== null && (
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+          <div className="min-w-0">
+            <div className="text-muted">flow · {DIRECTION_NAMES[info.flow & FLOW_DIR_MASK]}</div>
+            <div className="truncate text-[9.5px] text-mob">{flagNames(info.flow, FLOW_BITS)}</div>
+          </div>
+          <Bits value={info.flow} labels={FLOW_BITS} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -299,10 +334,7 @@ const LEGENDS: Record<ChapterId, readonly LegendItem[]> = {
     { color: '#A78BFA', label: 'area 2' },
     { color: INK.text, label: 'exit link' },
   ],
-  graph: [
-    { color: INK.portal, label: 'portal node' },
-    { color: INK.sight, label: 'hover: edge costs' },
-  ],
+  graph: [{ color: INK.portal, label: 'portal node' }],
   request: [
     { color: INK.chain, label: 'start' },
     { color: INK.open, label: 'target' },
@@ -324,7 +356,7 @@ const LEGENDS: Record<ChapterId, readonly LegendItem[]> = {
 
 export function Legend({ chapter }: { chapter: ChapterId }) {
   return (
-    <div className="pointer-events-none absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-x-3 gap-y-1 rounded-lg border border-border bg-panel/85 px-3 py-1.5 font-mono text-[10.5px] text-muted backdrop-blur-sm">
+    <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10.5px] text-muted">
       {LEGENDS[chapter].map(item => (
         <span key={item.label} className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ background: item.color }} />
