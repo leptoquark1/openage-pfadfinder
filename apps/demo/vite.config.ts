@@ -26,6 +26,9 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      input: ['index.html', 'guide.html'],
+    },
   },
   server: {
     open: true,

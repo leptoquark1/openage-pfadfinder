@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog } from './components/ConfirmDialog.js';
 import { PathfinderCanvas } from './components/PathfinderCanvas.js';
 import { Toolbar } from './components/Toolbar.js';
+import { WelcomeDialog } from './components/WelcomeDialog.js';
+import { isUnseen, markSeen, WELCOME_KEY } from './seen.js';
 import type { Mode } from './theme.js';
 import { World, type WorldStats } from './world/world.js';
 
@@ -20,6 +22,12 @@ export function App() {
   // Obstacles the labyrinth would remove, while its confirmation is open.
   const [mazeConfirm, setMazeConfirm] = useState<{ walls: number; moving: number } | null>(null);
   const [stats, setStats] = useState<WorldStats>(EMPTY_STATS);
+  const [showWelcome, setShowWelcome] = useState(() => isUnseen(WELCOME_KEY));
+
+  const handleWelcomeDone = useCallback(() => {
+    markSeen(WELCOME_KEY);
+    setShowWelcome(false);
+  }, []);
 
   const handleMode = useCallback(
     (next: Mode) => {
@@ -125,6 +133,7 @@ export function App() {
         <span className="text-fg">{mazeConfirm?.moving ?? 0}</span> moving obstacles will be removed. The target and
         mobs are kept.
       </ConfirmDialog>
+      {showWelcome && <WelcomeDialog onDone={handleWelcomeDone} />}
     </div>
   );
 }

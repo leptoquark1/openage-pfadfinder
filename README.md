@@ -12,9 +12,9 @@ A dependency-free, native ESM TypeScript library implementing two-stage hierarch
 pathfinding — a port of the [openage](https://github.com/SFTtech/openage) pathfinding system based on
 _Crowd Pathfinding and Steering Using Flow Field Tiles_ by Elijah Emerson.
 
-<small>Learn more about the underlying Pathfinding [here](https://github.com/SFTtech/openage/tree/master/doc/code/pathfinding)</small>
+<small>Learn more about the underlying Pathfinding in [openage Documentation](https://github.com/SFTtech/openage/tree/master/doc/code/pathfinding) or use the interactive Guide in the interactive Demo.</small>
 
-### [→ Try the Interactive Live Demo](https://leptoquark1.github.io/openage-pfadfinder/)
+### [→ Try the interactive Demo](https://leptoquark1.github.io/openage-pfadfinder/)
 
 ## Installation
 
