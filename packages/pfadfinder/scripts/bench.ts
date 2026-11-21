@@ -5,6 +5,7 @@ import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Types come from the sources; at runtime the built `dist/` is loaded dynamically.
+import type * as Core from '../src/index.ts';
 import type * as Shared from '../src/shared/index.ts';
 
 const args = process.argv.slice(2);
@@ -29,6 +30,12 @@ const PRECISION = 2;
 const SECTOR_SIZE = 16;
 const SIZES = IS_EXTENDED ? [512, 240, 64] : [64, 32];
 const CHANGES = IS_EXTENDED ? [500, 100, 50, 10] : [35, 10];
+const PLAN_SIZES = IS_EXTENDED ? [1024, 512, 240] : [256, 64];
+/** Paths per timed pass, and passes per workload (their median counts; even, so each build runs first equally often). */
+const PLAN_REQUESTS = IS_EXTENDED ? 1000 : 400;
+const PLAN_ROUNDS = IS_EXTENDED ? 16 : 12;
+/** Maps and requests depend only on this and the map size, not on which builds run. */
+const PLAN_SEED = 20_000;
 
 /** Accepts a package dir or its dist dir; relative paths resolve against the cwd. */
 const toDist = (dir: string): string => {
@@ -46,14 +53,23 @@ const short = (dir: string) => {
 type Lib = typeof Shared;
 type Grid = ReturnType<Lib['buildGrid']>;
 /** `label` names the build in the output: a short path or `<package>@<version>`. */
-type Build = { name: string; dir: string; label: string; lib: Lib };
+type Build = { name: string; dir: string; label: string; lib: Lib; core: typeof Core };
 
 const load = async (name: string, dir: string, label = short(dir)): Promise<Build> => {
   const entry = resolve(dir, 'shared/index.js');
-  if (!existsSync(entry)) {
-    fail(`${name} build not found: ${entry} is missing (run \`pnpm build\` there)`);
+  const coreEntry = resolve(dir, 'index.js');
+  for (const file of [entry, coreEntry]) {
+    if (!existsSync(file)) {
+      fail(`${name} build not found: ${file} is missing (run \`pnpm build\` there)`);
+    }
   }
-  return { name, dir, label, lib: (await import(pathToFileURL(entry).href)) as Lib };
+  return {
+    name,
+    dir,
+    label,
+    lib: (await import(pathToFileURL(entry).href)) as Lib,
+    core: (await import(pathToFileURL(coreEntry).href)) as typeof Core,
+  };
 };
 
 const PKG_NAME = (JSON.parse(readFileSync(resolve(PKG_DIR, 'package.json'), 'utf8')) as { name: string }).name;
@@ -384,6 +400,122 @@ for (const size of SIZES.toReversed()) {
   }
 }
 
+// ---------------------------------------------------------------- path planning
+
+const median = (values: number[]): number => {
+  const sorted = values.toSorted((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+};
+
+type Workload = 'first' | 'repeated' | 'shared';
+type PathRequest = { gridId: number; start: Tile; target: Tile };
+type PlanResult = { map: number; workload: Workload; timings: Record<string, number> };
+
+const WORKLOADS = ['first', 'repeated', 'shared'] as const;
+const WORKLOAD_LABEL: Record<Workload, string> = {
+  first: 'First requests',
+  repeated: 'Repeated',
+  shared: 'Shared target',
+};
+
+const pathfinderFor = (build: Build, grid: Grid) => {
+  const pathfinder = new build.core.Pathfinder();
+  pathfinder.addGrid(grid);
+  return pathfinder;
+};
+
+/** Time per path in µs for one pass over the requests. */
+const timePass = (pathfinder: Core.Pathfinder, requests: PathRequest[]): number => {
+  const t0 = performance.now();
+  for (const request of requests) {
+    pathfinder.getPath(request);
+  }
+  spinner.tick();
+  return ((performance.now() - t0) / requests.length) * 1000;
+};
+
+type PlanRun = { name: string; pathfinder: () => Core.Pathfinder };
+
+/**
+ * Median time per path of each build. The builds take turns pass by pass, in
+ * alternating order, so neither gains from running first or from the heap
+ * and JIT state the other one left behind.
+ */
+const timeBuilds = (runs: PlanRun[], requests: PathRequest[]): Record<string, number> => {
+  const passes = new Map(runs.map(run => [run.name, [] as number[]]));
+
+  for (let r = 0; r < PLAN_ROUNDS; r++) {
+    for (const run of r % 2 ? runs.toReversed() : runs) {
+      passes.get(run.name)!.push(timePass(run.pathfinder(), requests));
+    }
+  }
+
+  return Object.fromEntries(runs.map(run => [run.name, median(passes.get(run.name)!)]));
+};
+
+/** First requests fill an empty cache; the others run on a filled one. */
+const measurePlanning = (
+  costs: Uint8Array,
+  size: number,
+  distinct: PathRequest[],
+  shared: PathRequest[],
+): Record<Workload, Record<string, number>> => {
+  const states = builds.map(build => {
+    const grid = build.lib.buildGrid(costs.slice(), { width: size, height: size }, SECTOR_SIZE, 0);
+    return { build, grid, filled: pathfinderFor(build, grid) };
+  });
+
+  const first = timeBuilds(
+    states.map(({ build, grid }) => ({ name: build.name, pathfinder: () => pathfinderFor(build, grid) })),
+    distinct,
+  );
+
+  for (const { filled } of states) {
+    for (const request of [...distinct, ...shared]) {
+      filled.getPath(request);
+    }
+  }
+  const onFilled = states.map(({ build, filled }) => ({ name: build.name, pathfinder: () => filled }));
+
+  return { first, repeated: timeBuilds(onFilled, distinct), shared: timeBuilds(onFilled, shared) };
+};
+
+/** A map with its requests: every unit its own target, and all units one target. */
+const planCase = (size: number, requests: number) => {
+  seed = PLAN_SEED + size;
+  const costs = new Uint8Array(size * size).map(() => (rnd() < 0.15 ? COST_IMPASSABLE : COST_MIN));
+  const distinct = pick(costs, size, requests).map(start => ({
+    gridId: 0,
+    start,
+    target: pick(costs, size, 1)[0]!,
+  }));
+  const groupTarget = pick(costs, size, 1)[0]!;
+  const shared = pick(costs, size, requests).map(start => ({ gridId: 0, start, target: groupTarget }));
+  return { costs, distinct, shared };
+};
+
+const planResults: PlanResult[] = [];
+
+// Same reason as the warm-up above: every build has its own JIT state.
+{
+  spinner.set('Warming up (paths)');
+  const { costs, distinct, shared } = planCase(WARMUP_SIZE, 200);
+  measurePlanning(costs, WARMUP_SIZE, distinct, shared);
+}
+
+let planStep = 0;
+for (const size of PLAN_SIZES.toReversed()) {
+  spinner.set(`[paths ${++planStep}/${PLAN_SIZES.length}] ${size}×${size}`);
+  const { costs, distinct, shared } = planCase(size, PLAN_REQUESTS);
+  const timings = measurePlanning(costs, size, distinct, shared);
+
+  for (const workload of WORKLOADS) {
+    planResults.push({ map: size, workload, timings: timings[workload] });
+  }
+}
+planResults.sort((a, b) => b.map - a.map);
+
 spinner.stop();
 
 const speedup = (r: Result, mode: Mode) => round(r.timings.Then![mode] / r.timings.Now![mode]);
@@ -450,12 +582,6 @@ const isLabel = (c: Column) => c.changes === undefined;
 /** In comparison blocks the map is only named on its first row. */
 const firstOfMap = (i: number) => i === 0 || rows[i - 1]!.map !== rows[i]!.map;
 
-const median = (values: number[]): number => {
-  const sorted = values.toSorted((a, b) => a - b);
-  const mid = sorted.length >> 1;
-  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
-};
-
 /** Median ratio over all cases: Now vs. Then when comparing, batched vs. single otherwise. */
 const ratios = then
   ? results.flatMap(r => MODES.map(mode => speedup(r, mode)))
@@ -471,6 +597,19 @@ const summaryHead = (() => {
 const summaryDetail = `(median of ${ratios.length} cases)`;
 const summary = `${summaryHead} ${summaryDetail}`;
 
+const planSpeedup = (r: PlanResult) => round(r.timings.Then! / r.timings.Now!);
+const PLAN_MEDIAN = then ? round(median(planResults.map(planSpeedup))) : undefined;
+const planSummary =
+  PLAN_MEDIAN === undefined
+    ? undefined
+    : `Now plans paths ${
+        PLAN_MEDIAN >= 1
+          ? `${PLAN_MEDIAN.toFixed(PRECISION)}× faster`
+          : `${(1 / PLAN_MEDIAN).toFixed(PRECISION)}× slower`
+      } than Then`;
+const planDetail = `(median of ${planResults.length} cases)`;
+const planLegend = `Time per path (\`getPath\`), ${PLAN_REQUESTS} paths, median of ${PLAN_ROUNDS} passes`;
+
 const legend = then
   ? `Time per update pass, ${ROUNDS} rounds · Speedup = Then / Now`
   : `Time per update pass, ${ROUNDS} rounds · Factor = Single / Batched`;
@@ -479,7 +618,7 @@ const legend = then
  * Box-drawn terminal matrix: a spanning header per number of changes above
  * the compared values, right-aligned numbers and ratios colored by who wins.
  */
-const pretty = (): string => {
+const prettyMatrix = (): string => {
   const cells = rows.map(row => columns.map(c => c.cell(row)));
   const widths = columns.map((c, i) => Math.max(c.header.length, ...cells.map(r => r[i]!.text.length)));
 
@@ -542,10 +681,62 @@ const pretty = (): string => {
   return out.join('\n');
 };
 
+const us = (v: number): Cell => ({
+  text: `${v.toFixed(1)} µs`,
+  md: `${v.toFixed(1)}&#x2009;<small>µs</small>`,
+  style: plain,
+});
+const PLAN_HEADERS = then ? ['Then', 'Now', 'Speedup'] : ['Time'];
+const planCells = (r: PlanResult): Cell[] =>
+  then ? [us(r.timings.Then!), us(r.timings.Now!), ratio(planSpeedup(r))] : [us(r.timings.Now!)];
+/** The map is only named on the first row of its workloads. */
+const planMapLabel = (i: number) =>
+  i === 0 || planResults[i - 1]!.map !== planResults[i]!.map ? `${planResults[i]!.map}×${planResults[i]!.map}` : '';
+
+const prettyPlanning = (): string => {
+  const head = ['Map', 'Workload', ...PLAN_HEADERS];
+  const body: Cell[][] = planResults.map((r, i) => [
+    { text: planMapLabel(i), style: bold },
+    { text: WORKLOAD_LABEL[r.workload], style: plain },
+    ...planCells(r),
+  ]);
+  const widths = head.map((h, c) => Math.max(h.length, ...body.map(row => row[c]!.text.length)));
+  const line = (left: string, join: string, right: string) =>
+    dim(left + widths.map(w => '─'.repeat(w + 2)).join(join) + right);
+  const bar = dim('│');
+  const pad = (s: string, c: number) => (c < 2 ? s.padEnd(widths[c]!) : s.padStart(widths[c]!));
+
+  return [
+    line('┌', '┬', '┐'),
+    bar + head.map((h, c) => ` ${bold(pad(h, c))} `).join(bar) + bar,
+    line('├', '┼', '┤'),
+    ...body.map(row => bar + row.map((cell, c) => ` ${cell.style(pad(cell.text, c))} `).join(bar) + bar),
+    line('└', '┴', '┘'),
+    ...(planSummary ? [bold(colorRatio(PLAN_MEDIAN!)(`${planSummary} ${planDetail}`))] : []),
+    dim(planLegend),
+  ].join('\n');
+};
+
+const pretty = (): string => `${prettyMatrix()}\n\n${prettyPlanning()}`;
+
+const markdownPlanning = (): string =>
+  [
+    `Time per path (\`getPath\`), **${PLAN_REQUESTS} paths**, median of **${PLAN_ROUNDS} passes**`,
+    ``,
+    `| Map | Workload | ${PLAN_HEADERS.join(' | ')} |`,
+    `| :--- | :--- | ${PLAN_HEADERS.map(() => '---:').join(' | ')} |`,
+    ...planResults.map((r, i) => {
+      const label = planMapLabel(i);
+      const values = planCells(r).map(c => c.md ?? c.text);
+      return `| ${label && `**${label}**`} | ${WORKLOAD_LABEL[r.workload]} | ${values.join(' | ')} |`;
+    }),
+    ...(planSummary ? [``, `**${planSummary}** <small>${planDetail}</small>`] : []),
+  ].join('\n');
+
 const MD_KEYS = then ? ['◁', '▷', '×'] : ['•', '⇉', '×'];
 const MD_RULE = '⎯⎯⎯&nbsp;&nbsp;';
 
-const markdown = (): string => {
+const markdownUpdates = (): string => {
   const [keyA, keyB, keyRatio] = MD_KEYS;
   const label = (row: Row) => {
     const name = `**${row.map}×${row.map}**${row.mode ? ` · ${MODE_LABEL[row.mode]}` : ''}`;
@@ -592,9 +783,14 @@ const markdown = (): string => {
   ].join('\n');
 };
 
+const markdown = (): string => `${markdownUpdates()}\n\n${markdownPlanning()}`;
+
 const json = (): unknown => {
   if (!then) {
-    return results.map(r => ({ map: r.map, changes: r.changes, ...r.timings.Now }));
+    return {
+      results: results.map(r => ({ map: r.map, changes: r.changes, ...r.timings.Now })),
+      planning: planResults.map(r => ({ map: r.map, workload: r.workload, us: round(r.timings.Now!) })),
+    };
   }
 
   return {
@@ -609,6 +805,17 @@ const json = (): unknown => {
       now: r.timings.Now,
       speedup: { single: speedup(r, 'single'), batched: speedup(r, 'batched') },
     })),
+    planning: {
+      median: PLAN_MEDIAN,
+      results: planResults.map(r => ({
+        map: r.map,
+        workload: r.workload,
+        // biome-ignore lint/suspicious/noThenProperty: plain JSON output, never awaited
+        then: round(r.timings.Then!),
+        now: round(r.timings.Now!),
+        speedup: planSpeedup(r),
+      })),
+    },
   };
 };
 
@@ -641,10 +848,14 @@ if (!IS_SILENT) {
   console.log(output);
 }
 
-// Fail the comparison when Then is faster beyond noise, e.g. for CI.
-if (then && MEDIAN <= 1 - NOISE) {
+// Fail the comparison when Then is faster beyond noise, e.g. for CI. Each
+// suite counts on its own, so gains in one cannot hide a regression in the other.
+const slower = then
+  ? [...(MEDIAN <= 1 - NOISE ? ['cost updates'] : []), ...(PLAN_MEDIAN! <= 1 - NOISE ? ['path planning'] : [])]
+  : [];
+if (slower.length > 0) {
   if (!IS_SILENT) {
-    console.error(`\nThen is faster than Now beyond the ${NOISE * 100} % noise margin`);
+    console.error(`\nThen is faster than Now beyond the ${NOISE * 100} % noise margin: ${slower.join(', ')}`);
   }
   process.exitCode = 1;
 }
