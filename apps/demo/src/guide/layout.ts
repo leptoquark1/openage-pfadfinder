@@ -35,6 +35,23 @@ const BOTTOM = 84;
 /** Narrower screens have no room beside the map, so the card sits below it. */
 const SIDE_BY_SIDE_FROM = 900;
 const SHEET_SHARE = 0.42;
+/** On narrow screens, the part of the height the intro's large text takes below the map. */
+const INTRO_TEXT_SHARE = 0.6;
+const INTRO_TEXT_WIDTH_SHARE = 0.46;
+const INTRO_TEXT_MAX_WIDTH = 680;
+
+/** During the intro the map shares the screen with large text instead of the interface. */
+export function introInsets(width: number, height: number): Insets {
+  if (width < SIDE_BY_SIDE_FROM) {
+    return { top: 16, right: 10, bottom: Math.round(height * INTRO_TEXT_SHARE), left: 10 };
+  }
+  return {
+    top: 36,
+    right: 36,
+    bottom: 36,
+    left: Math.min(INTRO_TEXT_MAX_WIDTH, Math.round(width * INTRO_TEXT_WIDTH_SHARE)),
+  };
+}
 
 /** Fits the camera box into the canvas area the insets leave free. */
 export function makeView(width: number, height: number, camera: Box, insets: Insets): View {

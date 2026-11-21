@@ -35,7 +35,7 @@ function Code({ tokens }: { tokens: readonly Token[] }) {
 }
 
 /** Renders `code` and **bold** spans of a step's text. */
-function Rich({ text }: { text: string }) {
+export function Rich({ text }: { text: string }) {
   const parts: ReactNode[] = [];
   const pattern = /`([^`]+)`|\*\*([^*]+)\*\*/g;
   let at = 0;
@@ -66,7 +66,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 
 export function StepStory({ step }: { step: GuideStep }) {
   return (
-    <section aria-live="polite">
+    <section data-tour="story" aria-live="polite">
       <h2 className="mb-1.5 text-[18px] leading-tight font-semibold text-fg">{step.title}</h2>
       <p className="text-[13.5px] leading-[1.55] text-[#B4BEC8]">
         <Rich text={step.body} />
@@ -95,7 +95,7 @@ export function TryIt({
   onTool: (tool: Tool) => void;
 }) {
   return (
-    <section className="border-t border-border pt-2.5">
+    <section data-tour="try" className="border-t border-border pt-2.5">
       <p className="font-mono text-[11px] leading-snug text-mob">{interaction.hint}</p>
       {interaction.tools.length > 0 && (
         <fieldset aria-label="Canvas tool" className="mt-2 flex gap-1">
@@ -126,7 +126,7 @@ export function TryIt({
 
 export function ApiCall({ step }: { step: GuideStep }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-bg/60">
+    <section data-tour="api" className="overflow-hidden rounded-lg border border-border bg-bg/60">
       {step.stack.length > 0 && (
         <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-3 py-1.5 font-mono text-[10.5px] text-muted">
           {step.stack.map((frame, i) => (
@@ -356,7 +356,7 @@ const LEGENDS: Record<ChapterId, readonly LegendItem[]> = {
 
 export function Legend({ chapter }: { chapter: ChapterId }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10.5px] text-muted">
+    <div data-tour="legend" className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10.5px] text-muted">
       {LEGENDS[chapter].map(item => (
         <span key={item.label} className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ background: item.color }} />

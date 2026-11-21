@@ -1,14 +1,19 @@
 import { ArrowLeft } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { GUIDE_TOUR_KEY, isUnseen, markSeen } from '../seen.js';
 import { GuideCanvas, type HoverPoint } from './GuideCanvas.js';
-import { layoutGuide } from './layout.js';
+import { GuideTour } from './GuideTour.js';
+import { introInsets, layoutGuide, makeView } from './layout.js';
 import { ChapterMenu, StepDock } from './navigation.js';
 import { ApiCall, Inspector, Legend, OpenSet, StepStory, TryIt } from './panels.js';
 import { Player } from './player.js';
-import { SCENARIOS, type Scenario } from './scenarios.js';
+import { COLS, ROWS, SCENARIOS, type Scenario } from './scenarios.js';
 import { buildTimeline, CHAPTERS, type ChapterId, inspectCell, type Timeline, type Tool } from './timeline.js';
+import { INTRO_SLIDES, tourSceneStep, tourStopsFor } from './tour.js';
 
 const NO_TOOLS: readonly Tool[] = [];
+
+const durationsOf = (timeline: Timeline) => timeline.steps.map(step => step.duration);
 
 /** The step to show after the map changed: the same place in the same chapter, if it still exists. */
 function stepAfterEdit(previous: Timeline, index: number, next: Timeline): number {
@@ -48,20 +53,36 @@ export function GuideApp() {
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [cardHeight, setCardHeight] = useState(0);
   const [settled, setSettled] = useState(false);
-  const timeline = useMemo(() => buildTimeline(scenario), [scenario]);
+  // While the tour runs, `resume` is the step to return to afterwards.
+  const [tour, setTour] = useState<{ at: number; resume: number } | null>(() =>
+    isUnseen(GUIDE_TOUR_KEY) ? { at: 0, resume: 0 } : null,
+  );
+  const userTimeline = useMemo(() => buildTimeline(scenario), [scenario]);
+  // The tour always tells its story on the first map, whichever map the reader has open.
+  const tourTimeline = useMemo(() => buildTimeline(SCENARIOS[0]!), []);
+  const timeline = tour ? tourTimeline : userTimeline;
   useSyncExternalStore(player.subscribe, player.getVersion);
 
   const loaded = useRef<Timeline | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const tourRef = useRef(tour);
+  tourRef.current = tour;
+  const userTimelineRef = useRef(userTimeline);
+  userTimelineRef.current = userTimeline;
 
   useLayoutEffect(() => {
-    if (loaded.current === timeline) {
+    if (loaded.current === userTimeline) {
       return;
     }
-    const durations = timeline.steps.map(step => step.duration);
-    player.load(durations, loaded.current ? stepAfterEdit(loaded.current, player.index, timeline) : 0);
-    loaded.current = timeline;
-  }, [player, timeline]);
+    if (loaded.current) {
+      player.load(durationsOf(userTimeline), stepAfterEdit(loaded.current, player.index, userTimeline));
+    } else if (tourRef.current) {
+      player.load(durationsOf(tourTimeline), tourSceneStep(tourTimeline, 0));
+    } else {
+      player.load(durationsOf(userTimeline), 0);
+    }
+    loaded.current = userTimeline;
+  }, [player, userTimeline, tourTimeline]);
 
   useLayoutEffect(() => {
     const card = cardRef.current!;
@@ -93,12 +114,29 @@ export function GuideApp() {
   );
   const seek = useCallback((step: number) => player.seek(step), [player]);
 
+  const startTour = useCallback(() => {
+    setTour({ at: 0, resume: player.index });
+    player.load(durationsOf(tourTimeline), tourSceneStep(tourTimeline, 0));
+  }, [player, tourTimeline]);
+  const moveTour = useCallback(
+    (at: number) => {
+      setTour(current => current && { ...current, at });
+      player.seek(tourSceneStep(tourTimeline, at));
+    },
+    [player, tourTimeline],
+  );
+  const endTour = useCallback(() => {
+    markSeen(GUIDE_TOUR_KEY);
+    player.load(durationsOf(userTimelineRef.current), tourRef.current?.resume ?? 0);
+    setTour(null);
+  }, [player]);
+
   const index = Math.min(player.index, timeline.steps.length - 1);
   const step = timeline.steps[index]!;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) {
+      if (e.ctrlKey || e.metaKey || e.altKey || tourRef.current) {
         return;
       }
       switch (e.key) {
@@ -136,14 +174,20 @@ export function GuideApp() {
   const chooseTool = (next: Tool) => setChosen({ tool: next === tool ? 'inspect' : next, chapter: step.chapter });
 
   const layout = layoutGuide(viewport.width, viewport.height, step.side, step.focus, step.scene.camera, cardHeight);
-  const inspected = interaction?.inspect && tool === 'inspect' ? hover : null;
+  const inspected = interaction?.inspect && tool === 'inspect' && !tour ? hover : null;
   const info = inspected ? inspectCell(timeline.model, step.scene, inspected.cell) : null;
   const tooltipLeft = inspected !== null && inspected.x > viewport.width / 2;
   const tooltipUp = inspected !== null && inspected.y > viewport.height / 2;
 
+  const tourStops = tourStopsFor(viewport.width);
+  const tourAt = tour ? Math.min(tour.at, INTRO_SLIDES.length + tourStops.length - 1) : 0;
+  const inIntro = tour !== null && tourAt < INTRO_SLIDES.length;
+  const tourStop = tour && !inIntro ? tourStops[tourAt - INTRO_SLIDES.length] : undefined;
+  const mapView = makeView(viewport.width, viewport.height, step.scene.camera, layout.insets);
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-bg font-sans text-fg">
-      <h1 className="sr-only">Inside the Pathfinder</h1>
+      <h1 className="sr-only">Inside the Pfadfinder</h1>
 
       <GuideCanvas
         player={player}
@@ -151,37 +195,70 @@ export function GuideApp() {
         tool={tool}
         tools={tools}
         interactive={interaction !== null}
-        insets={layout.insets}
+        insets={inIntro ? introInsets(viewport.width, viewport.height) : layout.insets}
         onEdit={handleEdit}
         onHover={setHover}
       />
 
-      <a
-        href={import.meta.env.BASE_URL}
-        className="absolute top-3 left-3 z-20 flex h-9 items-center gap-1.5 rounded-lg border border-border bg-panel/85 px-2.5 font-mono text-[11px] text-muted backdrop-blur-sm transition-colors hover:bg-panel hover:text-fg"
-      >
-        <ArrowLeft size={14} aria-hidden="true" />
-        Demo
-      </a>
+      {tourStop && (
+        <div
+          data-tour="map"
+          className="pointer-events-none absolute"
+          style={{ left: mapView.ox, top: mapView.oy, width: COLS * mapView.s, height: ROWS * mapView.s }}
+        />
+      )}
 
-      <ChapterMenu timeline={timeline} index={index} scenario={scenario} onSelect={seek} onScenario={setScenario} />
-
+      {/* The intro shows nothing but the map; the interface fades in when the tour explains it. */}
       <div
-        ref={cardRef}
-        className={`absolute top-0 left-0 z-10 flex flex-col gap-3 overflow-y-auto rounded-2xl border border-border-strong bg-panel/92 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md ${
-          settled ? 'transition-transform duration-500 ease-out motion-reduce:transition-none' : ''
+        data-guide-interface
+        className={`transition-opacity duration-500 motion-reduce:transition-none ${
+          inIntro ? 'invisible opacity-0' : 'opacity-100'
         }`}
-        style={{
-          width: layout.card.width,
-          maxHeight: layout.card.maxHeight,
-          transform: `translate(${layout.card.x}px, ${layout.card.y}px)`,
-        }}
       >
-        <StepStory step={step} />
-        <ApiCall step={step} />
-        {step.event >= 0 && <OpenSet timeline={timeline} step={step} />}
-        <Legend chapter={step.chapter} />
-        {interaction && <TryIt interaction={interaction} tool={tool} onTool={chooseTool} />}
+        <a
+          href={import.meta.env.BASE_URL}
+          className="absolute top-3 left-3 z-20 flex h-9 items-center gap-1.5 rounded-lg border border-border bg-panel/85 px-2.5 font-mono text-[11px] text-muted backdrop-blur-sm transition-colors hover:bg-panel hover:text-fg"
+        >
+          <ArrowLeft size={14} aria-hidden="true" />
+          Demo
+        </a>
+
+        <ChapterMenu
+          timeline={timeline}
+          index={index}
+          scenario={tour ? SCENARIOS[0]! : scenario}
+          forceOpen={tourStop?.inMenu === true}
+          onSelect={seek}
+          onScenario={setScenario}
+          onTour={startTour}
+        />
+
+        <div
+          ref={cardRef}
+          className={`absolute top-0 left-0 z-10 flex flex-col gap-3 overflow-y-auto rounded-2xl border border-border-strong bg-panel/92 p-4 shadow-[0_14px_40px_rgba(0,0,0,0.5)] backdrop-blur-md ${
+            settled ? 'transition-transform duration-500 ease-out motion-reduce:transition-none' : ''
+          }`}
+          style={{
+            width: layout.card.width,
+            maxHeight: layout.card.maxHeight,
+            transform: `translate(${layout.card.x}px, ${layout.card.y}px)`,
+          }}
+        >
+          <StepStory step={step} />
+          <ApiCall step={step} />
+          {step.event >= 0 && <OpenSet timeline={timeline} step={step} />}
+          <Legend chapter={step.chapter} />
+          {interaction && <TryIt interaction={interaction} tool={tool} onTool={chooseTool} />}
+        </div>
+
+        <StepDock
+          timeline={timeline}
+          index={index}
+          onBack={() => player.stepBack()}
+          onNext={() => player.stepForward()}
+          onChapter={seekChapter}
+          onSeek={seek}
+        />
       </div>
 
       {info && inspected && (
@@ -197,14 +274,7 @@ export function GuideApp() {
         </div>
       )}
 
-      <StepDock
-        timeline={timeline}
-        index={index}
-        onBack={() => player.stepBack()}
-        onNext={() => player.stepForward()}
-        onChapter={seekChapter}
-        onSeek={seek}
-      />
+      {tour && <GuideTour timeline={timeline} stops={tourStops} at={tourAt} onMove={moveTour} onDone={endTour} />}
     </div>
   );
 }

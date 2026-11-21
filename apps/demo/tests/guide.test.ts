@@ -1,5 +1,5 @@
 import { Integrator, Pathfinder, portalAStar } from '@leptoquark1/openage-pfadfinder';
-import { COST_IMPASSABLE, COST_MIN, PathResult } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE, COST_MIN, INTEGRATE_LOS_MASK, PathResult } from '@leptoquark1/openage-pfadfinder/shared';
 import { describe, expect, it } from 'vitest';
 import { layoutGuide, makeView } from '../src/guide/layout.js';
 import { buildModel } from '../src/guide/model.js';
@@ -44,7 +44,7 @@ function randomScenario(seed: number): Scenario {
   while (target.ne === start.ne && target.se === start.se) {
     target = free();
   }
-  return { id: `random-${seed}`, name: 'Random', hint: '', costs, start, target };
+  return { id: `random-${seed}`, name: 'Random', hint: '', watch: 'search', costs, start, target };
 }
 
 const scenarios: readonly Scenario[] = [...SCENARIOS, ...Array.from({ length: 40 }, (_, i) => randomScenario(i + 1))];
@@ -148,6 +148,64 @@ describe('guide: scenarios', () => {
     expect(base.costs[wall.ne + wall.se * COLS]).toBe(COST_IMPASSABLE);
     expect(withPin(base, 'target', wall)).toBe(base);
     expect(withPin(base, 'target', base.start)).toBe(base);
+  });
+});
+
+describe('guide: map explanations', () => {
+  const scenarioOf = (id: string) => SCENARIOS.find(s => s.id === id)!;
+
+  it('points every map at a chapter it reaches', () => {
+    for (const scenario of SCENARIOS) {
+      expect(scenario.hint).not.toBe('');
+      expect(buildTimeline(scenario).chapters.map(c => c.id)).toContain(scenario.watch);
+    }
+  });
+
+  it('swamp: the route wades through mud although a dry way exists', () => {
+    const scenario = scenarioOf('swamp');
+    const model = buildModel(scenario);
+    expect(model.waypoints.some(w => scenario.costs[w.ne + w.se * COLS] === COST_MUD)).toBe(true);
+
+    const seen = new Set([scenario.start.ne + scenario.start.se * COLS]);
+    const open: Cell[] = [scenario.start];
+    while (open.length > 0) {
+      const { ne, se } = open.pop()!;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const next = { ne: ne + dx, se: se + dy };
+        const at = next.ne + next.se * COLS;
+        if (
+          next.ne >= 0 &&
+          next.se >= 0 &&
+          next.ne < COLS &&
+          next.se < ROWS &&
+          !seen.has(at) &&
+          scenario.costs[at] === COST_MIN
+        ) {
+          seen.add(at);
+          open.push(next);
+        }
+      }
+    }
+    expect(seen.has(scenario.target.ne + scenario.target.se * COLS)).toBe(true);
+  });
+
+  it('labyrinth: most sectors split into areas and the route doubles back', () => {
+    const model = buildModel(scenarioOf('maze'));
+    expect(model.sectors.filter(s => s.areaCount > 1).length).toBeGreaterThan(model.sectors.length / 2);
+    expect(new Set(model.routeSectors).size).toBeLessThan(model.routeSectors.length);
+    expect(model.portals.size).toBeGreaterThan(buildModel(scenarioOf('open')).portals.size);
+  });
+
+  it('open field: line of sight alone fills the target sector', () => {
+    const field = buildModel(scenarioOf('open')).fields[0]!;
+    expect(field.losWrites).toBe(field.writes.length);
+    const { flags } = replayField(field.writes, field.writes.length, SECTOR_SIZE);
+    expect([...flags].every(flag => (flag & INTEGRATE_LOS_MASK) !== 0)).toBe(true);
   });
 });
 

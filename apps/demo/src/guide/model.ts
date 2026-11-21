@@ -341,7 +341,7 @@ function spawnUnits(scenario: Scenario, route: FlowRoute, grid: Grid): UnitPath[
 }
 
 /**
- * Build the real grid and run the real pathfinder for a scenario, recording
+ * Build the real grid and run the real Pfadfinder for a scenario, recording
  * everything the guide needs to replay it.
  */
 export function buildModel(scenario: Scenario): GuideModel {

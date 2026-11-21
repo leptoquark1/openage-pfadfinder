@@ -1,7 +1,19 @@
 import type { LucideIcon } from 'lucide-react';
-import { ArrowRight, Check, ChevronDown, ChevronLeft, ChevronsLeft, ChevronsRight, RotateCcw } from 'lucide-react';
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  CircleHelp,
+  RotateCcw,
+} from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { SCENARIOS, type Scenario } from './scenarios.js';
+import { flushSync } from 'react-dom';
+import { MapPicker, MapPreview } from './maps.js';
+import type { Scenario } from './scenarios.js';
 import { CHAPTERS, type Chapter, type Timeline } from './timeline.js';
 
 /** The steps of a chapter of this run: `first` up to, but not including, `end`. */
@@ -74,21 +86,36 @@ export function ChapterMenu({
   timeline,
   index,
   scenario,
+  forceOpen,
   onSelect,
   onScenario,
+  onTour,
 }: {
   timeline: Timeline;
   index: number;
   scenario: Scenario;
+  /** The interface tour unfolds the chapter list to explain it. */
+  forceOpen: boolean;
   onSelect: (step: number) => void;
   onScenario: (scenario: Scenario) => void;
+  onTour: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [menuOpen, setOpen] = useState(false);
+  const [menuView, setView] = useState<'chapters' | 'maps'>('chapters');
+  const open = menuOpen || forceOpen;
+  const view = forceOpen ? 'chapters' : menuView;
   const root = useRef<HTMLElement>(null);
+  const viewFocus = useRef<HTMLButtonElement>(null);
   const listId = useId();
 
+  // The button that switched the view is gone afterwards, so keyboard focus moves along.
+  const switchView = (next: 'chapters' | 'maps') => {
+    flushSync(() => setView(next));
+    viewFocus.current?.focus();
+  };
+
   useEffect(() => {
-    if (!open) {
+    if (!menuOpen) {
       return;
     }
     const onPointer = (e: PointerEvent) => {
@@ -107,7 +134,7 @@ export function ChapterMenu({
       document.removeEventListener('pointerdown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [menuOpen]);
 
   const at = timeline.chapters.findIndex(c => c.id === timeline.steps[index]!.chapter);
   const chapter = timeline.chapters[at]!;
@@ -118,15 +145,23 @@ export function ChapterMenu({
   return (
     <nav
       ref={root}
+      data-tour="chapters"
       aria-label="Chapters"
-      className="absolute top-3 right-3 z-30 w-[264px] overflow-hidden rounded-xl border border-border-strong bg-panel/95 shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md"
+      className={`absolute top-3 right-3 z-30 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border-strong bg-panel/95 shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition-[width] duration-200 motion-reduce:transition-none ${
+        open && view === 'maps' ? 'w-[348px]' : 'w-[264px]'
+      }`}
     >
       <button
         type="button"
         aria-expanded={open}
         aria-controls={listId}
         aria-label={`Chapter ${number}: ${chapter.title}. ${open ? 'Hide' : 'Show'} all chapters`}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) {
+            setView('chapters');
+          }
+          setOpen(!open);
+        }}
         className="relative flex h-11 w-full items-center gap-2.5 px-3 text-left transition-colors hover:bg-border/40"
       >
         <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-mob font-mono text-[11px] font-bold text-bg">
@@ -151,49 +186,67 @@ export function ChapterMenu({
       >
         <div id={listId} inert={!open} className="min-h-0 overflow-hidden">
           <div className="max-h-[calc(100vh-5rem)] overflow-y-auto border-t border-border p-2">
-            {parts.map(part => (
-              <div key={part} className="mb-2">
-                <div className="mb-0.5 px-2 pt-1 font-mono text-[10px] tracking-[0.1em] text-muted/80 uppercase">
-                  {part}
-                </div>
-                <ol className="flex flex-col gap-0.5">
-                  {CHAPTERS.filter(c => c.part === part).map(c => (
-                    <ChapterRow
-                      key={c.id}
-                      chapter={c}
-                      timeline={timeline}
-                      index={index}
-                      onSelect={step => {
-                        onSelect(step);
-                        setOpen(false);
-                      }}
-                    />
-                  ))}
-                </ol>
-              </div>
-            ))}
-
-            <fieldset aria-label="Map" className="border-t border-border px-1 pt-2">
-              <div className="mb-1 px-1 font-mono text-[10px] tracking-[0.1em] text-muted/80 uppercase">Map</div>
-              <div className="grid grid-cols-2 gap-0.5">
-                {SCENARIOS.map(option => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={scenario.id === option.id}
-                    title={option.hint}
-                    onClick={() => onScenario(option)}
-                    className={`truncate rounded-md px-2 py-1.5 text-left font-mono text-[11px] transition-colors ${
-                      scenario.id === option.id
-                        ? 'bg-border-strong text-fg'
-                        : 'text-muted hover:bg-border/60 hover:text-fg'
-                    }`}
-                  >
-                    {option.name}
-                  </button>
+            {view === 'maps' ? (
+              <MapPicker
+                scenario={scenario}
+                onScenario={onScenario}
+                onBack={() => switchView('chapters')}
+                backRef={viewFocus}
+              />
+            ) : (
+              <>
+                {parts.map(part => (
+                  <div key={part} className="mb-2">
+                    <div className="mb-0.5 px-2 pt-1 font-mono text-[10px] tracking-[0.1em] text-muted/80 uppercase">
+                      {part}
+                    </div>
+                    <ol className="flex flex-col gap-0.5">
+                      {CHAPTERS.filter(c => c.part === part).map(c => (
+                        <ChapterRow
+                          key={c.id}
+                          chapter={c}
+                          timeline={timeline}
+                          index={index}
+                          onSelect={step => {
+                            onSelect(step);
+                            setOpen(false);
+                          }}
+                        />
+                      ))}
+                    </ol>
+                  </div>
                 ))}
-              </div>
-            </fieldset>
+
+                <button
+                  ref={viewFocus}
+                  type="button"
+                  data-tour="maps"
+                  aria-label={`Map: ${scenario.name}. Choose another map`}
+                  onClick={() => switchView('maps')}
+                  className="flex w-full items-center gap-2.5 rounded-md border-t border-border p-2 pt-2.5 text-left transition-colors hover:bg-border/60"
+                >
+                  <MapPreview scenario={scenario} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-mono text-[10px] tracking-[0.1em] text-muted/80 uppercase">Map</span>
+                    <span className="block truncate font-mono text-[12px] font-semibold text-fg">{scenario.name}</span>
+                    <span className="block font-mono text-[10.5px] text-mob">Compare maps</span>
+                  </span>
+                  <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden="true" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onTour();
+                  }}
+                  className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-mono text-[11px] text-muted transition-colors hover:bg-border/60 hover:text-fg"
+                >
+                  <CircleHelp size={14} aria-hidden="true" />
+                  How this guide works
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -204,17 +257,21 @@ export function ChapterMenu({
 function DockButton({
   icon: Icon,
   label,
+  tour,
   onClick,
   disabled,
 }: {
   icon: LucideIcon;
   label: string;
+  /** The stop of the interface tour that explains this button. */
+  tour: string;
   onClick: () => void;
   disabled: boolean;
 }) {
   return (
     <button
       type="button"
+      data-tour={tour}
       title={label}
       aria-label={label}
       onClick={onClick}
@@ -259,12 +316,13 @@ export function StepDock({
       <DockButton
         icon={ChevronsLeft}
         label="Previous section (Shift + ←)"
+        tour="sections"
         onClick={() => onChapter(-1)}
         disabled={index === 0}
       />
-      <DockButton icon={ChevronLeft} label="Previous step (←)" onClick={onBack} disabled={index === 0} />
+      <DockButton icon={ChevronLeft} label="Previous step (←)" tour="step" onClick={onBack} disabled={index === 0} />
 
-      <div className="hidden h-3 w-[132px] shrink-0 items-center gap-[2px] px-2 sm:flex">
+      <div data-tour="ticks" className="hidden h-3 w-[132px] shrink-0 items-center gap-[2px] px-2 sm:flex">
         {Array.from({ length: end - first }, (_, i) => {
           const step = first + i;
           return (
@@ -289,6 +347,7 @@ export function StepDock({
 
       <button
         type="button"
+        data-tour="step"
         title={atFinish ? 'Start over' : `${nextLabel} (→)`}
         onClick={atFinish ? () => onSeek(0) : onNext}
         className="flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full bg-mob px-3 font-mono text-[12px] font-semibold text-bg transition-colors hover:bg-mob/85 sm:w-[184px] sm:flex-none"
@@ -299,6 +358,7 @@ export function StepDock({
       <DockButton
         icon={ChevronsRight}
         label="Next section (Shift + →)"
+        tour="sections"
         onClick={() => onChapter(1)}
         disabled={!nextChapter}
       />
