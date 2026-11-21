@@ -7,17 +7,31 @@ Time per update pass, **60 rounds**
 
 | **<div align="right">Δ</div><div align="left">&nbsp;↔</div>** | **500**<br><br> | **100**<br><br> | **50**<br><br> | **10**<br><br> |
 | :--- | ---: | ---: | ---: | ---: |
-| <div align="left">**512×512**</div><div align="right">•<br/>⇉<br/><br/>×</div> | <br/>58.52&#x2009;<small>ms</small><br/>7.60&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>7.70&#x2009;<small>×</small>&nbsp; | <br/>15.84&#x2009;<small>ms</small><br/>2.84&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>5.58&#x2009;<small>×</small>&nbsp; | <br/>8.12&#x2009;<small>ms</small><br/>1.58&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>5.15&#x2009;<small>×</small>&nbsp; | <br/>1.63&#x2009;<small>ms</small><br/>0.46&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>3.53&#x2009;<small>×</small>&nbsp; |
-| <div align="left">**240×240**</div><div align="right">•<br/>⇉<br/><br/>×</div> | <br/>22.15&#x2009;<small>ms</small><br/>3.21&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>6.90&#x2009;<small>×</small>&nbsp; | <br/>5.99&#x2009;<small>ms</small><br/>1.95&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>3.08&#x2009;<small>×</small>&nbsp; | <br/>2.85&#x2009;<small>ms</small><br/>1.20&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>2.38&#x2009;<small>×</small>&nbsp; | <br/>0.57&#x2009;<small>ms</small><br/>0.29&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>1.97&#x2009;<small>×</small>&nbsp; |
-| <div align="left">**64×64**</div><div align="right">•<br/>⇉<br/><br/>×</div> | <br/>6.90&#x2009;<small>ms</small><br/>0.22&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>31.41&#x2009;<small>×</small>&nbsp; | <br/>1.64&#x2009;<small>ms</small><br/>0.17&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>9.83&#x2009;<small>×</small>&nbsp; | <br/>0.78&#x2009;<small>ms</small><br/>0.16&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>4.93&#x2009;<small>×</small>&nbsp; | <br/>0.14&#x2009;<small>ms</small><br/>0.08&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>1.74&#x2009;<small>×</small>&nbsp; |
+| <div align="left">**512×512**</div><div align="right">•<br/>⇉<br/><br/>×</div> | <br/>57.45&#x2009;<small>ms</small><br/>7.39&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>7.78&#x2009;<small>×</small>&nbsp; | <br/>15.64&#x2009;<small>ms</small><br/>2.68&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>5.84&#x2009;<small>×</small>&nbsp; | <br/>8.24&#x2009;<small>ms</small><br/>1.50&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>5.49&#x2009;<small>×</small>&nbsp; | <br/>1.61&#x2009;<small>ms</small><br/>0.45&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>3.58&#x2009;<small>×</small>&nbsp; |
+| <div align="left">**240×240**</div><div align="right">•<br/>⇉<br/><br/>×</div> | <br/>21.65&#x2009;<small>ms</small><br/>3.09&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>7.02&#x2009;<small>×</small>&nbsp; | <br/>5.67&#x2009;<small>ms</small><br/>1.85&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>3.07&#x2009;<small>×</small>&nbsp; | <br/>2.76&#x2009;<small>ms</small><br/>1.14&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>2.43&#x2009;<small>×</small>&nbsp; | <br/>0.55&#x2009;<small>ms</small><br/>0.27&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>2.00&#x2009;<small>×</small>&nbsp; |
+| <div align="left">**64×64**</div><div align="right">•<br/>⇉<br/><br/>×</div> | <br/>6.63&#x2009;<small>ms</small><br/>0.21&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>31.11&#x2009;<small>×</small>&nbsp; | <br/>1.55&#x2009;<small>ms</small><br/>0.16&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>9.63&#x2009;<small>×</small>&nbsp; | <br/>0.76&#x2009;<small>ms</small><br/>0.14&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>5.27&#x2009;<small>×</small>&nbsp; | <br/>0.13&#x2009;<small>ms</small><br/>0.08&#x2009;<small>ms</small><br/>⎯⎯⎯&nbsp;&nbsp;<br/>1.77&#x2009;<small>×</small>&nbsp; |
 
-**Batching is 5.04× faster than single calls** <small>(median of 12 cases)</small>
+**Batching is 5.38× faster than single calls** <small>(median of 12 cases)</small>
 
 > **Δ** &nbsp; <small>_Changes per pass_</small>&nbsp;&nbsp;&nbsp;&nbsp;
 > **↔** &nbsp; <small>_Map size_</small>&nbsp;&nbsp;&nbsp;&nbsp;
 > **•** &nbsp; <small>_Single_</small>&nbsp;&nbsp;&nbsp;&nbsp;
 > **⇉** &nbsp; <small>_Batched_</small>&nbsp;&nbsp;&nbsp;&nbsp;
 > **×** &nbsp; <small>_Factor_</small>
+
+Time per path (`getPath`), **1000 paths**, median of **16 passes**
+
+| Map | Workload | Time |
+| :--- | :--- | ---: |
+| **1024×1024** | First requests | 315.7&#x2009;<small>µs</small> |
+|  | Repeated | 79.6&#x2009;<small>µs</small> |
+|  | Shared target | 74.1&#x2009;<small>µs</small> |
+| **512×512** | First requests | 77.2&#x2009;<small>µs</small> |
+|  | Repeated | 33.3&#x2009;<small>µs</small> |
+|  | Shared target | 26.7&#x2009;<small>µs</small> |
+| **240×240** | First requests | 32.9&#x2009;<small>µs</small> |
+|  | Repeated | 15.3&#x2009;<small>µs</small> |
+|  | Shared target | 18.0&#x2009;<small>µs</small> |
 <!-- benchmark:end -->
 
 ## Usage
@@ -35,8 +49,12 @@ pnpm benchmark latest --md      # the results block on stdout (also with --full)
 | Exit code | Meaning |
 | ---: | :--- |
 | 0 | Done, Now is not slower than Then beyond 5 % noise |
-| 1 | Then is faster: median speedup ≤ 0.95 |
+| 1 | Then is faster: median speedup ≤ 0.95 in cost updates or in path planning |
 | 2 | Wrong call or a build could not be loaded |
+
+Two suites run: `Grid.updateCosts()` and path planning with `Pathfinder.getPath()`.
+Planning measures the first requests on an empty cache, repeated requests on a
+filled one, and many units heading for one shared target.
 
 The `benchmark` job in [ci.yml](../.github/workflows/ci.yml) runs
 `pnpm benchmark latest` on PRs that change the package and fails on exit code.
