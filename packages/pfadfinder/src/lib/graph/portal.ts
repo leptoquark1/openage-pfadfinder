@@ -1,4 +1,4 @@
-import { PortalDirection, type PortalId, type SectorId, type TileDelta } from '../../shared/types.js';
+import { type CacheKey, PortalDirection, type PortalId, type SectorId, type TileDelta } from '../../shared/types.js';
 
 /**
  * Bidirectional gateway connecting two adjacent sectors.
@@ -15,6 +15,11 @@ export class Portal {
   private readonly cellEnd: TileDelta;
   private sector0Exits: Portal[] = [];
   private sector1Exits: Portal[] = [];
+  /** Derived from the immutable cell range on first use, per sector side. */
+  private entryCenter0: TileDelta | undefined;
+  private entryCenter1: TileDelta | undefined;
+  private rangeKey0: CacheKey | undefined;
+  private rangeKey1: CacheKey | undefined;
 
   constructor(
     id: PortalId,
@@ -130,12 +135,23 @@ export class Portal {
    * Entry center coordinate.
    */
   getEntryCenter(sectorId: SectorId): TileDelta {
+    const isSector0 = sectorId === this.sector0;
+    const known = isSector0 ? this.entryCenter0 : this.entryCenter1;
+    if (known) {
+      return known;
+    }
     const start = this.getEntryStart(sectorId);
     const end = this.getEntryEnd(sectorId);
-    return {
+    const center = {
       ne: Math.floor((start.ne + end.ne) / 2),
       se: Math.floor((start.se + end.se) / 2),
     };
+    if (isSector0) {
+      this.entryCenter0 = center;
+    } else {
+      this.entryCenter1 = center;
+    }
+    return center;
   }
 
   /**
@@ -176,6 +192,28 @@ export class Portal {
       return { ne: 0, se: this.cellEnd.se };
     }
     return this.cellEnd;
+  }
+
+  /**
+   * Key of the cells this portal occupies in the sector entered from
+   * `sectorId`: portals spanning the same range there share it.
+   */
+  getExitRangeKey(sectorId: SectorId): CacheKey {
+    if (sectorId === this.sector0) {
+      this.rangeKey0 ??= this.makeRangeKey(sectorId);
+      return this.rangeKey0;
+    }
+    if (sectorId === this.sector1) {
+      this.rangeKey1 ??= this.makeRangeKey(sectorId);
+      return this.rangeKey1;
+    }
+    return this.makeRangeKey(sectorId);
+  }
+
+  private makeRangeKey(sectorId: SectorId): CacheKey {
+    const start = this.getExitStart(sectorId);
+    const end = this.getExitEnd(sectorId);
+    return `${sectorId}:${start.ne},${start.se}:${end.ne},${end.se}`;
   }
 
   /**

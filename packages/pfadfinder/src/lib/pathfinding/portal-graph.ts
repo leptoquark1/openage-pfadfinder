@@ -2,7 +2,7 @@ import { tileEuclidean } from '../../shared/coordinates.js';
 import type { PortalId, SectorId, TileDelta } from '../../shared/types.js';
 import type { Grid } from '../graph/grid.js';
 import type { Portal } from '../graph/portal.js';
-import { BinaryHeap } from '../internal/binary-heap.js';
+import { type HeapEntry, IntrusiveHeap } from '../internal/binary-heap.js';
 
 export interface PortalStarResult {
   readonly found: boolean;
@@ -28,6 +28,8 @@ export class PortalNode {
    * distances.
    */
   readonly exits: Map<SectorId, Map<PortalId, number>> = new Map();
+  /** This node's state in the running `portalAStar()`; unset between searches. */
+  search: PortalSearchNode | undefined;
 
   constructor(portal: Portal);
   constructor(
@@ -113,25 +115,35 @@ export class PortalNode {
   }
 }
 
+/** State of one portal during a `portalAStar()` run; `priority` is its f-cost. */
+export interface PortalSearchNode extends HeapEntry {
+  portalNode: PortalNode;
+  entrySector: SectorId;
+  currentCost: number;
+  heuristicCost: number;
+  prev: PortalSearchNode | undefined;
+  /** Popped from the open set: its cost is final and it is not visited again. */
+  closed: boolean;
+}
+
+/** The portals from the search's start to this node. */
+function backtrace(end: PortalSearchNode): Portal[] {
+  const portals: Portal[] = [];
+  for (let node: PortalSearchNode | undefined = end; node; node = node.prev) {
+    portals.push(node.portalNode.portal);
+  }
+  return portals.reverse();
+}
+
 /**
  * A* search on the portal graph.
  * Finds the shortest sequence of portals from start portals to target portals.
  *
  * Uses the pre-initialized PortalNode objects from nodeMap (which have exits
- * populated by initExits). Search state (cost, prev, entrySector) is stored
- * in lightweight wrapper objects to avoid mutating the shared nodeMap nodes.
+ * populated by initExits). Search state (cost, prev, entrySector) lives in
+ * lightweight objects that a node only refers to while the search runs, so
+ * no per-search lookup table is needed and the nodes keep nothing afterwards.
  */
-interface SearchNode {
-  portalNode: PortalNode;
-  entrySector: SectorId;
-  currentCost: number;
-  heuristicCost: number;
-  futureCost: number;
-  prev: SearchNode | undefined;
-  /** Popped from the open set: its cost is final and it is not visited again. */
-  closed: boolean;
-}
-
 export function portalAStar(
   grid: Grid,
   startPortals: Portal[],
@@ -145,16 +157,35 @@ export function portalAStar(
     return { found: false, portals: [], partial: false };
   }
 
+  const reached: PortalNode[] = [];
+  try {
+    return search(grid, startPortals, targetPortals, nodeMap, targetPosGlobal, startSectorId, startPosGlobal, reached);
+  } finally {
+    for (const node of reached) {
+      node.search = undefined;
+    }
+  }
+}
+
+function search(
+  grid: Grid,
+  startPortals: Portal[],
+  targetPortals: Portal[],
+  nodeMap: Map<PortalId, PortalNode>,
+  targetPosGlobal: TileDelta,
+  startSectorId: SectorId,
+  startPosGlobal: TileDelta | undefined,
+  reached: PortalNode[],
+): PortalStarResult {
   // A start portal can be a target portal too (start and target sectors are
   // neighbors); it is found like any other node once popped, so the best of
   // several such portals wins, not the first one listed.
   const targetIds = new Set(targetPortals.map(p => p.getId()));
 
-  const openSet = new BinaryHeap<SearchNode>();
-  const searchNodes = new Map<PortalId, SearchNode>();
+  const openSet = new IntrusiveHeap<PortalSearchNode>();
 
   // Track closest node for partial-path fallback
-  let closestNode: SearchNode | undefined;
+  let closestNode: PortalSearchNode | undefined;
 
   // Initialize start nodes — use nodeMap's PortalNode for exit lookups
   for (const startPortal of startPortals) {
@@ -171,17 +202,19 @@ export function portalAStar(
     // the walk from the start to the portal, when the start is known
     const g = startPosGlobal ? PortalNode.heuristicCost(startPosGlobal, centerGlobal) : 0;
 
-    const sn: SearchNode = {
+    const sn: PortalSearchNode = {
       portalNode,
       entrySector,
       currentCost: g,
       heuristicCost: h,
-      futureCost: g + h,
+      priority: g + h,
+      index: 0,
       prev: undefined,
       closed: false,
     };
-    searchNodes.set(startPortal.getId(), sn);
-    openSet.push(sn, sn.futureCost);
+    portalNode.search = sn;
+    reached.push(portalNode);
+    openSet.push(sn, sn.priority);
 
     if (!closestNode || h < closestNode.heuristicCost) {
       closestNode = sn;
@@ -192,13 +225,7 @@ export function portalAStar(
     const current = openSet.pop()!;
 
     if (targetIds.has(current.portalNode.portal.getId())) {
-      const portals: Portal[] = [];
-      let node: SearchNode | undefined = current;
-      while (node) {
-        portals.unshift(node.portalNode.portal);
-        node = node.prev;
-      }
-      return { found: true, portals, partial: false };
+      return { found: true, portals: backtrace(current), partial: false };
     }
 
     current.closed = true;
@@ -221,12 +248,12 @@ export function portalAStar(
         continue;
       }
 
-      const existing = searchNodes.get(exitId);
-      if (existing?.closed) {
+      const exitPortalNode = nodeMap.get(exitId);
+      if (!exitPortalNode) {
         continue;
       }
-      const exitPortalNode = existing?.portalNode ?? nodeMap.get(exitId);
-      if (!exitPortalNode) {
+      const existing = exitPortalNode.search;
+      if (existing?.closed) {
         continue;
       }
       const exitPortal = exitPortalNode.portal;
@@ -253,44 +280,34 @@ export function portalAStar(
       const futureCost = newCost + h;
 
       if (!existing) {
-        const sn: SearchNode = {
+        const sn: PortalSearchNode = {
           portalNode: exitPortalNode,
           entrySector: exitEntrySector,
           currentCost: newCost,
           heuristicCost: h,
-          futureCost,
+          priority: futureCost,
+          index: 0,
           prev: current,
           closed: false,
         };
-        searchNodes.set(exitId, sn);
+        exitPortalNode.search = sn;
+        reached.push(exitPortalNode);
         openSet.push(sn, futureCost);
 
         if (!closestNode || h < closestNode.heuristicCost) {
           closestNode = sn;
         }
-      } else if (newCost < existing.currentCost) {
+      } else {
+        // Reached at a lower cost, or a start node reached internally via a
+        // sibling start portal, from a different sector side than its initial
+        // (uncrossed) state. That represents genuinely crossing the portal —
+        // a different traversal state than "haven't moved yet" — so it must
+        // adopt this path's cost, not silently keep its stale 0-cost/priority.
         existing.currentCost = newCost;
         existing.heuristicCost = h;
-        existing.futureCost = futureCost;
         existing.prev = current;
         existing.entrySector = exitEntrySector;
-        openSet.updatePriority(existing, futureCost);
-
-        if (!closestNode || h < closestNode.heuristicCost) {
-          closestNode = existing;
-        }
-      } else if (existing.prev === undefined && existing.entrySector !== exitEntrySector) {
-        // A start node reached internally via a sibling start portal, from a
-        // different sector side than its initial (uncrossed) state. This
-        // represents genuinely crossing the portal — a different traversal
-        // state than "haven't moved yet" — so it must adopt this path's cost,
-        // not silently keep its stale 0-cost/priority.
-        existing.currentCost = newCost;
-        existing.heuristicCost = h;
-        existing.futureCost = futureCost;
-        existing.prev = current;
-        existing.entrySector = exitEntrySector;
-        openSet.updatePriority(existing, futureCost);
+        openSet.update(existing, futureCost);
 
         if (!closestNode || h < closestNode.heuristicCost) {
           closestNode = existing;
@@ -301,13 +318,7 @@ export function portalAStar(
 
   // No path found — return partial path to closest node if available
   if (closestNode && closestNode.prev !== undefined) {
-    const portals: Portal[] = [];
-    let node: SearchNode | undefined = closestNode;
-    while (node) {
-      portals.unshift(node.portalNode.portal);
-      node = node.prev;
-    }
-    return { found: false, portals, partial: true };
+    return { found: false, portals: backtrace(closestNode), partial: true };
   }
 
   return { found: false, portals: [], partial: false };
