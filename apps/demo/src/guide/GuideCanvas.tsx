@@ -1,11 +1,13 @@
 import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder/shared';
 import { useEffect, useRef } from 'react';
 import type { Insets } from './layout.js';
-import type { GuideModel } from './model.js';
+import type { GuideModel } from './model/types.js';
 import type { Player } from './player.js';
-import { drawGuide, screenToCell } from './render.js';
+import { drawGuide } from './canvas/render.js';
+import { screenToCell } from './layout.js';
 import { type Cell, COST_MUD, type Scenario, withCost, withPin } from './scenarios.js';
-import { type Box, mixScene, type Timeline, type Tool } from './timeline.js';
+import { type Box, mixScene } from './story/scene.js';
+import type { Timeline, Tool } from './story/types.js';
 import { type MapReveal, SCENE_FADE_MS, SCENE_HANDOVER_HOLD_MS, SCENE_HANDOVER_MS, sceneFade } from './tour.js';
 
 const TOOL_COST: Partial<Record<Tool, number>> = {

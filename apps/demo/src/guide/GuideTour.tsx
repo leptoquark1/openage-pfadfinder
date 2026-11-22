@@ -2,7 +2,8 @@ import { ArrowLeft, ArrowRight, House } from 'lucide-react';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { GUIDE_TOUR_KEY, markSeen, WELCOME_KEY } from '../seen.js';
 import { Rich } from './panels.js';
-import { CHAPTERS, type ChapterId, type Timeline } from './timeline.js';
+import { CHAPTERS, type ChapterId } from './story/chapters.js';
+import type { Timeline } from './story/types.js';
 import {
   holesPath,
   INTRO_SLIDES,

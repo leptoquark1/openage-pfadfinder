@@ -2,7 +2,7 @@ import { Integrator, Pathfinder, portalAStar } from '@leptoquark1/openage-pfadfi
 import { COST_IMPASSABLE, COST_MIN, INTEGRATE_LOS_MASK, PathResult } from '@leptoquark1/openage-pfadfinder/shared';
 import { describe, expect, it } from 'vitest';
 import { layoutGuide, makeView } from '../src/guide/layout.js';
-import { buildModel } from '../src/guide/model.js';
+import { buildModel } from '../src/guide/model/model.js';
 import { replayField } from '../src/guide/observe.js';
 import { Player } from '../src/guide/player.js';
 import { LINE_OF, PROGRAM, tokenize } from '../src/guide/program.js';
@@ -17,7 +17,8 @@ import {
   withCost,
   withPin,
 } from '../src/guide/scenarios.js';
-import { buildTimeline, mixScene } from '../src/guide/timeline.js';
+import { buildTimeline } from '../src/guide/story/timeline.js';
+import { mixScene } from '../src/guide/story/scene.js';
 
 /** Deterministic random maps, so a failure can be reproduced. */
 function randomScenario(seed: number): Scenario {
