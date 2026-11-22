@@ -75,7 +75,7 @@ export function Toolbar({
   obstacleCount,
 }: ToolbarProps) {
   return (
-    <div className="flex w-21 shrink-0 flex-col gap-1.5 border-r border-border bg-bg px-2 py-4 overflow-y-scroll">
+    <div className="flex w-21 shrink-0 flex-col gap-1.5 border-r border-border bg-bg px-2 py-4 overflow-y-auto scrollbar-subtle">
       <ToolbarSectionTitle label="Objects" />
 
       <div role="radiogroup" aria-label="Mode">
