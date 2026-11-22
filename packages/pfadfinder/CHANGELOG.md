@@ -1,5 +1,11 @@
 # @leptoquark1/openage-pfadfinder
 
+## 1.3.1
+
+### Patch Changes
+
+- 61f9016: Remove the Node.js `engines` constraint, since the library does not depend on any Node.js APIs.
+
 ## 1.3.0
 
 ### Minor Changes
