@@ -1,4 +1,8 @@
+import { FLOW_DIR_MASK, FLOW_TARGET_MASK } from '@leptoquark1/openage-pfadfinder/shared';
 import type { View } from '../layout.js';
+import type { GuideModel } from '../model/types.js';
+import type { Cell } from '../scenarios.js';
+import { INK } from './ink.js';
 
 const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
@@ -87,7 +91,7 @@ export function tag(
   ctx.restore();
 }
 
-export function arrow(
+function arrow(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
@@ -110,5 +114,79 @@ export function arrow(
   ctx.moveTo(hx - (dx - dy * 0.7) * wing, hy - (dy + dx * 0.7) * wing);
   ctx.lineTo(hx, hy);
   ctx.lineTo(hx - (dx + dy * 0.7) * wing, hy - (dy - dx * 0.7) * wing);
+  ctx.stroke();
+}
+
+/** The arrow of a flow byte; a portal's exit cells stand out from the `plain` ones. */
+export function flowArrow(
+  ctx: CanvasRenderingContext2D,
+  byte: number,
+  cx: number,
+  cy: number,
+  cellSize: number,
+  plain: string,
+): void {
+  const exit = (byte & FLOW_TARGET_MASK) !== 0;
+  arrow(
+    ctx,
+    cx,
+    cy,
+    byte & FLOW_DIR_MASK,
+    cellSize * (cellSize >= 26 ? 0.52 : 0.62),
+    exit ? INK.portal : plain,
+    Math.max(1.1, cellSize * (exit ? 0.07 : 0.045)),
+  );
+}
+
+export function disc(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number): void {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+export function ring(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number): void {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+export function segment(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+export interface Point {
+  readonly x: number;
+  readonly y: number;
+}
+
+export const cellCenter = (v: View, cell: Cell): Point => ({ x: px(v, cell.ne + 0.5), y: py(v, cell.se + 0.5) });
+
+export function portalPoint(model: GuideModel, v: View, id: number): Point {
+  const portal = model.portals.get(id)!;
+  return { x: px(v, portal.x), y: py(v, portal.y) };
+}
+
+/** The found chain from the start through its portals, ending on the target if the search reached it. */
+export function chainPoints(model: GuideModel, v: View): Point[] {
+  const { start, target } = model.scenario;
+  const points = [cellCenter(v, start), ...(model.search?.chain ?? []).map(id => portalPoint(model, v, id))];
+  if (model.search?.found) {
+    points.push(cellCenter(v, target));
+  }
+  return points;
+}
+
+/** Strokes the first `progress` (0..1) of a line through the points, segment by segment. */
+export function strokePartial(ctx: CanvasRenderingContext2D, points: readonly Point[], progress: number): void {
+  const segments = (points.length - 1) * progress;
+  ctx.beginPath();
+  ctx.moveTo(points[0]!.x, points[0]!.y);
+  for (let i = 1; i < points.length && i - 1 < segments; i++) {
+    const part = clamp01(segments - (i - 1));
+    ctx.lineTo(lerp(points[i - 1]!.x, points[i]!.x, part), lerp(points[i - 1]!.y, points[i]!.y, part));
+  }
   ctx.stroke();
 }

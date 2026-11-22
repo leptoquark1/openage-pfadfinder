@@ -4,7 +4,7 @@ import type { GuideModel } from '../../model/types.js';
 import { SECTOR_SIZE } from '../../scenarios.js';
 import type { Scene } from '../../story/scene.js';
 import { INK } from '../ink.js';
-import { clamp01, lerp, px, py, rgba, tag } from '../primitives.js';
+import { clamp01, disc, lerp, px, py, rgba, segment, tag } from '../primitives.js';
 
 /** Cells per second of the crowd looping after the story ended. */
 const CROWD_LOOP_SPEED = 4.5;
@@ -73,9 +73,7 @@ export function drawRoute(ctx: CanvasRenderingContext2D, model: GuideModel, scen
       ctx.fillStyle = COLORS.bg;
       ctx.strokeStyle = INK.sight;
       ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, Math.max(3, v.s * 0.13), 0, Math.PI * 2);
-      ctx.fill();
+      disc(ctx, p.x, p.y, Math.max(3, v.s * 0.13));
       ctx.stroke();
     }
     walked -= lengths[i] ?? 0;
@@ -84,9 +82,7 @@ export function drawRoute(ctx: CanvasRenderingContext2D, model: GuideModel, scen
   if (scene.walk < 1 && scene.crowd === 0) {
     const pulse = 1 + Math.sin(now / 90) * 0.15;
     ctx.fillStyle = INK.chain;
-    ctx.beginPath();
-    ctx.arc(head.x, head.y, Math.max(5, v.s * 0.24) * pulse, 0, Math.PI * 2);
-    ctx.fill();
+    disc(ctx, head.x, head.y, Math.max(5, v.s * 0.24) * pulse);
   }
   ctx.restore();
 }
@@ -132,15 +128,10 @@ export function drawCrowd(
       ctx.strokeStyle = rgba(INK.chain, 0.32);
       ctx.lineWidth = Math.max(1.5, v.s * 0.09);
       ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(px(v, trail.x + ox), py(v, trail.y + oy));
-      ctx.lineTo(px(v, here.x + ox), py(v, here.y + oy));
-      ctx.stroke();
+      segment(ctx, px(v, trail.x + ox), py(v, trail.y + oy), px(v, here.x + ox), py(v, here.y + oy));
     }
     ctx.fillStyle = arrived ? rgba(INK.chain, 0.28) : INK.chain;
-    ctx.beginPath();
-    ctx.arc(px(v, here.x + ox), py(v, here.y + oy), Math.max(2.4, v.s * (arrived ? 0.07 : 0.13)), 0, Math.PI * 2);
-    ctx.fill();
+    disc(ctx, px(v, here.x + ox), py(v, here.y + oy), Math.max(2.4, v.s * (arrived ? 0.07 : 0.13)));
   });
   ctx.restore();
 }

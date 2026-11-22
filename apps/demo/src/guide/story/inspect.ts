@@ -1,9 +1,5 @@
-import {
-  FLOW_DIR_MASK,
-  FLOW_PATHABLE_MASK,
-  FLOW_TARGET_MASK,
-  INTEGRATED_COST_UNREACHABLE,
-} from '@leptoquark1/openage-pfadfinder/shared';
+import { INTEGRATED_COST_UNREACHABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { flowDirection } from '../model/fields.js';
 import type { GuideModel } from '../model/types.js';
 import { replayField } from '../observe.js';
 import { type Cell, COLS, SECTOR_SIZE } from '../scenarios.js';
@@ -49,8 +45,7 @@ export function inspectCell(model: GuideModel, scene: Scene, cell: Cell): CellIn
     integrationFlags = state.flags[localIndex]!;
     if ((scene.fieldFlow[i] ?? 0) > localIndex) {
       flow = field.flow[localIndex]!;
-      const atGoal = field.kind === 'target' && (flow & FLOW_TARGET_MASK) !== 0;
-      direction = !atGoal && (flow & FLOW_PATHABLE_MASK) !== 0 ? flow & FLOW_DIR_MASK : null;
+      direction = flowDirection(field, flow);
     }
     break;
   }
