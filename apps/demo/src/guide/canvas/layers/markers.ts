@@ -4,7 +4,7 @@ import type { GuideModel } from '../../model/types.js';
 import { type Cell, SECTOR_SIZE } from '../../scenarios.js';
 import type { Box, Scene } from '../../story/scene.js';
 import { INK } from '../ink.js';
-import { clamp01, lerp, px, py, rgba, smooth, tag, text } from '../primitives.js';
+import { clamp01, disc, lerp, px, py, rgba, ring, smooth, tag, text } from '../primitives.js';
 
 export function drawCoords(ctx: CanvasRenderingContext2D, model: GuideModel, scene: Scene, v: View): void {
   if (scene.coords <= 0) {
@@ -75,29 +75,19 @@ export function drawPins(
     const wave = (((now / 1500 + i / 2) % 1) + 1) % 1;
     ctx.strokeStyle = rgba(INK.open, (1 - wave) * 0.7);
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(tx, ty, radius + wave * v.s * 0.9, 0, Math.PI * 2);
-    ctx.stroke();
+    ring(ctx, tx, ty, radius + wave * v.s * 0.9);
   }
   ctx.fillStyle = INK.open;
-  ctx.beginPath();
-  ctx.arc(tx, ty, radius, 0, Math.PI * 2);
-  ctx.fill();
+  disc(ctx, tx, ty, radius);
   ctx.fillStyle = COLORS.bg;
-  ctx.beginPath();
-  ctx.arc(tx, ty, radius * 0.62, 0, Math.PI * 2);
-  ctx.fill();
+  disc(ctx, tx, ty, radius * 0.62);
   ctx.fillStyle = INK.open;
-  ctx.beginPath();
-  ctx.arc(tx, ty, radius * 0.3, 0, Math.PI * 2);
-  ctx.fill();
+  disc(ctx, tx, ty, radius * 0.3);
 
   const sx = px(v, start.ne + 0.5);
   const sy = py(v, start.se + 0.5);
   ctx.fillStyle = INK.chain;
-  ctx.beginPath();
-  ctx.arc(sx, sy, radius, 0, Math.PI * 2);
-  ctx.fill();
+  disc(ctx, sx, sy, radius);
   ctx.strokeStyle = COLORS.bg;
   ctx.lineWidth = 2;
   ctx.stroke();

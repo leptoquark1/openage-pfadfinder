@@ -1,19 +1,18 @@
 import {
-  FLOW_DIR_MASK,
   FLOW_PATHABLE_MASK,
-  FLOW_TARGET_MASK,
   INTEGRATE_LOS_MASK,
   INTEGRATE_TARGET_MASK,
   INTEGRATE_WAVEFRONT_BLOCKED_MASK,
   INTEGRATED_COST_UNREACHABLE,
 } from '@leptoquark1/openage-pfadfinder/shared';
 import type { View } from '../../layout.js';
+import { flowDirection } from '../../model/fields.js';
 import type { GuideModel } from '../../model/types.js';
 import { replayField } from '../../observe.js';
 import { SECTOR_SIZE } from '../../scenarios.js';
 import type { Scene } from '../../story/scene.js';
 import { INK } from '../ink.js';
-import { arrow, clamp01, heat, px, py, rgba, text } from '../primitives.js';
+import { clamp01, flowArrow, heat, px, py, rgba, text } from '../primitives.js';
 
 export function drawFields(ctx: CanvasRenderingContext2D, model: GuideModel, scene: Scene, v: View, now: number): void {
   const faded = 1 - clamp01(scene.crowd * 6) * 0.45;
@@ -87,22 +86,10 @@ export function drawFields(ctx: CanvasRenderingContext2D, model: GuideModel, sce
       }
       if (hasFlow) {
         const byte = field.flow[idx]!;
-        const isGoal = field.kind === 'target' && (byte & FLOW_TARGET_MASK) !== 0;
-        const cx = x + v.s / 2;
-        const cy = y + v.s / 2 + (v.s >= 44 ? v.s * 0.07 : 0);
-        if (isGoal) {
-          continue;
+        if (flowDirection(field, byte) !== null) {
+          const cy = y + v.s / 2 + (v.s >= 44 ? v.s * 0.07 : 0);
+          flowArrow(ctx, byte, x + v.s / 2, cy, v.s, `rgba(255,255,255,${0.86 * faded})`);
         }
-        const isExit = (byte & FLOW_TARGET_MASK) !== 0;
-        arrow(
-          ctx,
-          cx,
-          cy,
-          byte & FLOW_DIR_MASK,
-          v.s * (v.s >= 26 ? 0.52 : 0.62),
-          isExit ? INK.portal : `rgba(255,255,255,${0.86 * faded})`,
-          Math.max(1.1, v.s * (isExit ? 0.07 : 0.045)),
-        );
       } else if ((flags & INTEGRATE_TARGET_MASK) !== 0 && field.kind === 'portal') {
         ctx.strokeStyle = INK.portal;
         ctx.lineWidth = 2;

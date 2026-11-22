@@ -1,11 +1,6 @@
-import {
-  COST_MIN,
-  FLOW_DIR_MASK,
-  FLOW_PATHABLE_MASK,
-  FLOW_TARGET_MASK,
-  INTEGRATED_COST_UNREACHABLE,
-} from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_MIN, INTEGRATED_COST_UNREACHABLE } from '@leptoquark1/openage-pfadfinder/shared';
 import type { View } from '../layout.js';
+import { flowDirection } from '../model/fields.js';
 import type { FieldTrace, GuideModel, PortalView } from '../model/types.js';
 import { replayField } from '../observe.js';
 import { COLS, ROWS, SECTOR_SIZE, SECTORS_X, SECTORS_Y } from '../scenarios.js';
@@ -23,7 +18,22 @@ import {
 } from '../tour.js';
 import { INK } from './ink.js';
 import { drawTerrain } from './layers/terrain.js';
-import { arrow, clamp01, heat, lerp, px, py, rgba, smooth, tag } from './primitives.js';
+import {
+  chainPoints,
+  clamp01,
+  disc,
+  flowArrow,
+  heat,
+  lerp,
+  portalPoint,
+  px,
+  py,
+  rgba,
+  segment,
+  smooth,
+  strokePartial,
+  tag,
+} from './primitives.js';
 
 /** The terrain, then drawn over it: the outline, a sweep of grid lines and the sector borders. */
 export function drawGridReveal(ctx: CanvasRenderingContext2D, model: GuideModel, v: View, seconds: number): void {
@@ -95,10 +105,13 @@ function drawGateOpening(ctx: CanvasRenderingContext2D, portal: PortalView, v: V
   ctx.strokeStyle = INK.portal;
   ctx.lineWidth = Math.max(2.5, v.s * 0.13);
   ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(px(v, lerp(portal.x, from.x, shown)), py(v, lerp(portal.y, from.y, shown)));
-  ctx.lineTo(px(v, lerp(portal.x, to.x, shown)), py(v, lerp(portal.y, to.y, shown)));
-  ctx.stroke();
+  segment(
+    ctx,
+    px(v, lerp(portal.x, from.x, shown)),
+    py(v, lerp(portal.y, from.y, shown)),
+    px(v, lerp(portal.x, to.x, shown)),
+    py(v, lerp(portal.y, to.y, shown)),
+  );
 }
 
 /** The recorded A* search as a calm spread over the open gates, settling on the route it found. */
@@ -111,10 +124,7 @@ export function drawSearchReveal(ctx: CanvasRenderingContext2D, model: GuideMode
   const chain = smooth(searchChainProgress(seconds));
   const tree = 1 - chain;
   const radius = Math.max(4, v.s * 0.2);
-  const point = (id: number) => {
-    const portal = model.portals.get(id)!;
-    return { x: px(v, portal.x), y: py(v, portal.y) };
-  };
+  const point = (id: number) => portalPoint(model, v, id);
 
   ctx.save();
   ctx.lineCap = 'round';
@@ -155,9 +165,7 @@ export function drawSearchReveal(ctx: CanvasRenderingContext2D, model: GuideMode
       if (alpha > 0) {
         ctx.globalAlpha = alpha;
         ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
+        disc(ctx, x, y, radius);
       }
     };
     const entry = reached.get(portal.id);
@@ -170,21 +178,9 @@ export function drawSearchReveal(ctx: CanvasRenderingContext2D, model: GuideMode
   ctx.globalAlpha = 1;
 
   if (chain > 0 && model.search && model.search.chain.length > 0) {
-    const { start, target } = model.scenario;
-    const points = [{ x: px(v, start.ne + 0.5), y: py(v, start.se + 0.5) }, ...model.search.chain.map(point)];
-    if (model.search.found) {
-      points.push({ x: px(v, target.ne + 0.5), y: py(v, target.se + 0.5) });
-    }
-    const segments = (points.length - 1) * chain;
     ctx.strokeStyle = model.search.found ? INK.chain : INK.shadow;
     ctx.lineWidth = Math.max(3, v.s * 0.12);
-    ctx.beginPath();
-    ctx.moveTo(points[0]!.x, points[0]!.y);
-    for (let i = 1; i < points.length && i - 1 < segments; i++) {
-      const part = clamp01(segments - (i - 1));
-      ctx.lineTo(lerp(points[i - 1]!.x, points[i]!.x, part), lerp(points[i - 1]!.y, points[i]!.y, part));
-    }
-    ctx.stroke();
+    strokePartial(ctx, chainPoints(model, v), chain);
   }
   ctx.restore();
 }
@@ -284,20 +280,10 @@ export function drawFlowReveal(
       }
 
       const byte = field.flow[idx]!;
-      const atGoal = field.kind === 'target' && (byte & FLOW_TARGET_MASK) !== 0;
       const pointed = waveAt(arrows, place);
-      if (pointed > 0 && !atGoal && (byte & FLOW_PATHABLE_MASK) !== 0) {
-        const exit = (byte & FLOW_TARGET_MASK) !== 0;
+      if (pointed > 0 && flowDirection(field, byte) !== null) {
         ctx.globalAlpha = pointed * opacity;
-        arrow(
-          ctx,
-          x + v.s / 2,
-          y + v.s / 2,
-          byte & FLOW_DIR_MASK,
-          v.s * (v.s >= 26 ? 0.52 : 0.62),
-          exit ? INK.portal : 'rgba(255, 255, 255, 0.86)',
-          Math.max(1.1, v.s * (exit ? 0.07 : 0.045)),
-        );
+        flowArrow(ctx, byte, x + v.s / 2, y + v.s / 2, v.s, 'rgba(255, 255, 255, 0.86)');
       }
     }
 
@@ -340,9 +326,7 @@ export function drawGatesReveal(ctx: CanvasRenderingContext2D, model: GuideModel
     const x = px(v, portal.x);
     const y = py(v, portal.y);
     ctx.fillStyle = INK.portal;
-    ctx.beginPath();
-    ctx.arc(x, y, radius * (shown + Math.sin(shown * Math.PI) * 0.25), 0, Math.PI * 2);
-    ctx.fill();
+    disc(ctx, x, y, radius * (shown + Math.sin(shown * Math.PI) * 0.25));
   });
   ctx.restore();
 }
@@ -360,10 +344,7 @@ export function drawProblem(ctx: CanvasRenderingContext2D, model: GuideModel, v:
   ctx.strokeStyle = rgba(INK.text, 0.45);
   ctx.lineWidth = 1.5;
   ctx.setLineDash([6, 6]);
-  ctx.beginPath();
-  ctx.moveTo(from.x, from.y);
-  ctx.lineTo(lerp(from.x, to.x, drawn), lerp(from.y, to.y, drawn));
-  ctx.stroke();
+  segment(ctx, from.x, from.y, lerp(from.x, to.x, drawn), lerp(from.y, to.y, drawn));
   ctx.setLineDash([]);
   tag(
     ctx,

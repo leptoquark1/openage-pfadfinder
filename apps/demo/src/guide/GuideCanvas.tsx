@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import type { Insets } from './layout.js';
 import type { GuideModel } from './model/types.js';
 import type { Player } from './player.js';
+import { smooth } from './canvas/primitives.js';
 import { drawGuide } from './canvas/render.js';
 import { screenToCell } from './layout.js';
 import { type Cell, COST_MUD, type Scenario, withCost, withPin } from './scenarios.js';
@@ -42,7 +43,6 @@ interface GuideCanvasProps {
   onHover: (hover: HoverPoint | null) => void;
 }
 
-const ease = (t: number) => t * t * (3 - 2 * t);
 const sameCell = (a: Cell | null, b: Cell | null) => a?.ne === b?.ne && a?.se === b?.se;
 
 export function GuideCanvas({
@@ -249,7 +249,7 @@ export function GuideCanvas({
       const index = Math.min(player.index, current.steps.length - 1);
       const step = current.steps[index]!;
       const previous = current.steps[index - 1]?.scene ?? step.scene;
-      const scene = mixScene(previous, step.scene, ease(player.t));
+      const scene = mixScene(previous, step.scene, smooth(player.t));
 
       const goal = scene.camera;
       if (!camera || !margins || reducedMotion) {
@@ -331,7 +331,7 @@ export function GuideCanvas({
             });
           }
           ctx.save();
-          ctx.globalAlpha = ease(sceneFade(now - fadeStart, fadeMs));
+          ctx.globalAlpha = smooth(sceneFade(now - fadeStart, fadeMs));
           ctx.drawImage(outgoing, 0, 0, width, height);
           ctx.restore();
         }

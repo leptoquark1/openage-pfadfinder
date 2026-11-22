@@ -84,38 +84,36 @@ export function scanEdges(grid: Grid, costs: Uint8Array): EdgeScan[] {
       .map(p => p.getId())
       .sort((p, q) => p - q);
 
+  const scan = (sector: Sector, next: Sector, northSouth: boolean, cellAt: (i: number) => Cell): EdgeScan => ({
+    a: sector.getId(),
+    b: next.getId(),
+    northSouth,
+    pairs: Array.from({ length: SECTOR_SIZE }, (_, i) => {
+      const a = cellAt(i);
+      const b = northSouth ? { ne: a.ne, se: a.se + 1 } : { ne: a.ne + 1, se: a.se };
+      return { a, b, open: open(a, b) };
+    }),
+    portalIds: portalsBetween(sector, next),
+  });
+
   for (let y = 0; y < SECTORS_Y; y++) {
     for (let x = 0; x < SECTORS_X; x++) {
       const sector = grid.getSector(x, y)!;
       if (y < SECTORS_Y - 1) {
-        const below = grid.getSector(x, y + 1)!;
-        const pairs = Array.from({ length: SECTOR_SIZE }, (_, i) => {
-          const a = { ne: x * SECTOR_SIZE + i, se: (y + 1) * SECTOR_SIZE - 1 };
-          const b = { ne: a.ne, se: a.se + 1 };
-          return { a, b, open: open(a, b) };
-        });
-        edges.push({
-          a: sector.getId(),
-          b: below.getId(),
-          northSouth: true,
-          pairs,
-          portalIds: portalsBetween(sector, below),
-        });
+        edges.push(
+          scan(sector, grid.getSector(x, y + 1)!, true, i => ({
+            ne: x * SECTOR_SIZE + i,
+            se: (y + 1) * SECTOR_SIZE - 1,
+          })),
+        );
       }
       if (x < SECTORS_X - 1) {
-        const right = grid.getSector(x + 1, y)!;
-        const pairs = Array.from({ length: SECTOR_SIZE }, (_, i) => {
-          const a = { ne: (x + 1) * SECTOR_SIZE - 1, se: y * SECTOR_SIZE + i };
-          const b = { ne: a.ne + 1, se: a.se };
-          return { a, b, open: open(a, b) };
-        });
-        edges.push({
-          a: sector.getId(),
-          b: right.getId(),
-          northSouth: false,
-          pairs,
-          portalIds: portalsBetween(sector, right),
-        });
+        edges.push(
+          scan(sector, grid.getSector(x + 1, y)!, false, i => ({
+            ne: (x + 1) * SECTOR_SIZE - 1,
+            se: y * SECTOR_SIZE + i,
+          })),
+        );
       }
     }
   }
