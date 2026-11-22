@@ -24,7 +24,7 @@ npm install @leptoquark1/openage-pfadfinder
 yarn add @leptoquark1/openage-pfadfinder
 ```
 
-Requires Node.js `>=20`. The package is ESM-only and ships TypeScript declarations.
+The package is ESM-only and ships TypeScript declarations.
 
 ## Usage
 
@@ -134,6 +134,8 @@ docs/                                 API reference, release and benchmark docum
 ```
 
 ## Development
+
+Requires Node.js `>=20`.
 
 ```bash
 pnpm install
