@@ -1,5 +1,6 @@
 import { COST_MUD } from './scenarios.js';
-import type { ChapterId, Timeline } from './timeline.js';
+import type { ChapterId } from './story/chapters.js';
+import type { Timeline } from './story/types.js';
 
 export interface Rect {
   readonly x: number;

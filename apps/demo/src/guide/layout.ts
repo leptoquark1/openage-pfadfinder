@@ -1,5 +1,6 @@
-import { SECTOR_SIZE } from './scenarios.js';
-import type { Box, GuideStep } from './timeline.js';
+import { type Cell, COLS, ROWS, SECTOR_SIZE } from './scenarios.js';
+import type { Box } from './story/scene.js';
+import type { GuideStep } from './story/types.js';
 
 /** Canvas space the map keeps free for floating interface elements. */
 export interface Insets {
@@ -79,6 +80,21 @@ export function placeTooltip(
     x: Math.max(TOOLTIP_EDGE, Math.min(x, view.width - size.w - TOOLTIP_EDGE)),
     y: Math.max(TOOLTIP_EDGE, Math.min(y, view.height - size.h - TOOLTIP_EDGE)),
   };
+}
+
+/** The map cell under a canvas position, or null outside the map. */
+export function screenToCell(
+  width: number,
+  height: number,
+  camera: Box,
+  insets: Insets,
+  x: number,
+  y: number,
+): Cell | null {
+  const v = makeView(width, height, camera, insets);
+  const ne = Math.floor((x - v.ox) / v.s);
+  const se = Math.floor((y - v.oy) / v.s);
+  return ne >= 0 && se >= 0 && ne < COLS && se < ROWS ? { ne, se } : null;
 }
 
 /**

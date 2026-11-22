@@ -2,9 +2,9 @@ import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder/shared';
 import { Check, ChevronLeft, RotateCcw } from 'lucide-react';
 import { type Ref, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { INK } from './render.js';
+import { INK } from './canvas/ink.js';
 import { type Cell, COLS, differsFrom, ROWS, SCENARIOS, type Scenario } from './scenarios.js';
-import { CHAPTERS } from './timeline.js';
+import { CHAPTERS } from './story/chapters.js';
 
 const PREVIEW_CELL = 3;
 

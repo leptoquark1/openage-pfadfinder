@@ -8,16 +8,11 @@ import { ChapterMenu, StepDock } from './navigation.js';
 import { ApiCall, InspectorTip, Legend, OpenSet, StepStory, TryIt } from './panels.js';
 import { Player } from './player.js';
 import { COLS, ROWS, SCENARIOS, type Scenario } from './scenarios.js';
-import {
-  buildTimeline,
-  type ChapterId,
-  inspectCell,
-  type ReaderPlace,
-  readerPlace,
-  stepForPlace,
-  type Timeline,
-  type Tool,
-} from './timeline.js';
+import { buildTimeline } from './story/timeline.js';
+import type { ChapterId } from './story/chapters.js';
+import { inspectCell } from './story/inspect.js';
+import { type ReaderPlace, readerPlace, stepForPlace } from './story/place.js';
+import type { Timeline, Tool } from './story/types.js';
 import { INTRO_SLIDES, tourSceneStep, tourStopsFor } from './tour.js';
 
 const NO_TOOLS: readonly Tool[] = [];

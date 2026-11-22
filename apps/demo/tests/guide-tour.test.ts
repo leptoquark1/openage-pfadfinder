@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COST_MUD, SCENARIOS } from '../src/guide/scenarios.js';
-import { buildTimeline, CHAPTERS } from '../src/guide/timeline.js';
+import { buildTimeline } from '../src/guide/story/timeline.js';
+import { CHAPTERS } from '../src/guide/story/chapters.js';
 import {
   fieldArrowProgress,
   fieldWaveProgress,

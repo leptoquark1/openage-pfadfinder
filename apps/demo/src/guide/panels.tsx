@@ -12,8 +12,10 @@ import { BrickWall, ChevronRight, CircleDot, Eraser, Flag, MousePointer2, Waves 
 import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 import { placeTooltip } from './layout.js';
 import { LINE_OF, PROGRAM, type Token, type TokenKind, tokenize } from './program.js';
-import { INK } from './render.js';
-import type { ChapterId, CellInspection, GuideStep, StepInteraction, Timeline, Tool } from './timeline.js';
+import { INK } from './canvas/ink.js';
+import type { ChapterId } from './story/chapters.js';
+import type { CellInspection } from './story/inspect.js';
+import type { GuideStep, StepInteraction, Timeline, Tool } from './story/types.js';
 
 const TOKEN_CLASS: Record<TokenKind, string> = {
   plain: 'text-fg/80',

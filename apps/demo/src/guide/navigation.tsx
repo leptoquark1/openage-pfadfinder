@@ -14,7 +14,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { MapPicker, MapPreview } from './maps.js';
 import type { Scenario } from './scenarios.js';
-import { CHAPTERS, type Chapter, type Timeline } from './timeline.js';
+import { CHAPTERS, type Chapter } from './story/chapters.js';
+import type { Timeline } from './story/types.js';
 
 /** The steps of a chapter of this run: `first` up to, but not including, `end`. */
 function stepRange(timeline: Timeline, chapterAt: number) {
