@@ -57,23 +57,70 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: 'read'
-      pull-requests: 'read'
+      pull-requests: 'write'
       issues: 'read'
       id-token: 'write'
+    env:
+      GH_TOKEN: '${{ github.token }}'
+      REPO: '${{ github.repository }}'
+      PR_NUMBER: '${{ github.event.pull_request.number || github.event.issue.number }}'
+      BOT_COMMENTS: '.[] | select(.user.login == "github-actions[bot]" or .user.login == "claude[bot]")'
     steps:
+      # The plugin may not recognize github-actions[bot] as Claude, so one review
+      # per PR is enforced here. A "skipped" comment does not count as a review.
+      - name: 'Check for an existing review'
+        id: 'existing'
+        shell: 'bash'
+        run: |-
+          reviews=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq "$BOT_COMMENTS | select(.body | startswith(\"## Code review\") and (startswith(\"## Code review skipped\") | not)) | .id" | wc -l)
+          skipped=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq "$BOT_COMMENTS | select(.body | startswith(\"## Code review skipped\")) | .id" | wc -l)
+          inline=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/comments" --jq "$BOT_COMMENTS | .id" | wc -l)
+          echo "count=$((reviews + skipped + inline))" >> "$GITHUB_OUTPUT"
+          if [ "$((reviews + inline))" -gt 0 ]; then
+            echo "::notice::PR #$PR_NUMBER already has a Claude review."
+            echo "reviewed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reviewed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 'Checkout repository'
+        if: "steps.existing.outputs.reviewed != 'true'"
         uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' # ratchet:actions/checkout@v7
         with:
           fetch-depth: 1
 
       - name: 'Run Claude Code Review'
+        if: "steps.existing.outputs.reviewed != 'true'"
         uses: 'anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67' # ratchet:anthropics/claude-code-action@v1
         with:
+          # GITHUB_TOKEN instead of the Claude App token: with the App token,
+          # reviews finished successfully without posting anything.
+          github_token: '${{ github.token }}'
           # Set one of these secrets (`claude setup-token` or /install-github-app creates the OAuth token).
           claude_code_oauth_token: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}'
           anthropic_api_key: '${{ secrets.ANTHROPIC_API_KEY }}'
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           # Without --comment the plugin only prints its findings to the (hidden) log.
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number || github.event.issue.number }} --comment'
+          # The plugin can stop without a word, so require a comment in that case too.
+          prompt: |-
+            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number || github.event.issue.number }} --comment
+
+            If you stop before posting a review for any reason, post a PR comment with `gh pr comment` instead. Start it with the heading `## Code review skipped` and give the reason in one sentence.
           claude_args: "--model ${{ vars.CLAUDE_MODEL || 'claude-opus-5-5' }} --effort ${{ vars.CLAUDE_EFFORT || 'high' }}"
+
+      - name: 'Verify that the review was posted'
+        if: "steps.existing.outputs.reviewed != 'true'"
+        shell: 'bash'
+        env:
+          BEFORE: '${{ steps.existing.outputs.count }}'
+        run: |-
+          summaries=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq "$BOT_COMMENTS | select(.body | startswith(\"## Code review\")) | .id" | wc -l)
+          inline=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/comments" --jq "$BOT_COMMENTS | .id" | wc -l)
+          if [ "$((summaries + inline))" -le "$BEFORE" ]; then
+            echo "::error::Claude finished without posting a review comment on PR #$PR_NUMBER."
+            exit 1
+          fi
