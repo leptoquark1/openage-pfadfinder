@@ -30,3 +30,6 @@ export {
 export { Pathfinder } from './lib/pathfinding/pathfinder.js';
 export type { PortalStarResult } from './lib/pathfinding/portal-graph.js';
 export { PortalNode, portalAStar } from './lib/pathfinding/portal-graph.js';
+
+// --- Shared: flags, constants, coordinates, cost maps, types (src/shared) ---
+export * from './shared/index.js';

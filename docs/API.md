@@ -1,19 +1,13 @@
 # API Reference
 
-Two entry points:
-
-| Import | Contents |
-|  ------ | -------- |
-| `import { Pathfinder } from '@leptoquark1/openage-pfadfinder'` | All pathfinding classes, fields, graph types and helpers |
-| `import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder/shared'` | Types/enums used in requests & results, constants, bit ops, coordinate and cost-map helpers |
+Everything is imported from the package entry point `@leptoquark1/openage-pfadfinder`: all pathfinding classes, fields, graph types and helpers, plus the types/enums used in requests & results, constants, bit ops, coordinate and cost-map helpers.
 
 Coordinates are `{ ne, se }` tile deltas (`ne` = east/west axis, `se` = south/north axis), matching openage. Cells are indexed row-major: `idx = ne + se * size`.
 
 ## Quick start
 
 ```typescript
-import { Pathfinder, Grid, Sector, CostField } from '@leptoquark1/openage-pfadfinder';
-import { COST_MIN, COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { Pathfinder, Grid, Sector, CostField, COST_MIN, COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder';
 
 const grid = new Grid(0, { width: 4, height: 4 }, 10); // 4×4 sectors of 10×10 cells
 let id = 0;
@@ -378,9 +372,9 @@ function bresenhamLine(target: TileDelta, cornerX: number, cornerY: number, size
 // returns cell indices along the ray
 ```
 
-## Shared subpath (`./shared`)
+## Shared types, constants and helpers
 
-Everything below is importable from `@leptoquark1/openage-pfadfinder/shared` (and re-exported through it only — not duplicated in the main entry).
+Everything below is importable from `@leptoquark1/openage-pfadfinder`.
 
 ### Types & enums
 

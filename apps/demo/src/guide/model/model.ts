@@ -1,5 +1,12 @@
-import { CostField, Grid, Pathfinder, type Portal, Sector } from '@leptoquark1/openage-pfadfinder';
-import { PathResult, type PortalId } from '@leptoquark1/openage-pfadfinder/shared';
+import {
+  CostField,
+  Grid,
+  Pathfinder,
+  PathResult,
+  type Portal,
+  type PortalId,
+  Sector,
+} from '@leptoquark1/openage-pfadfinder';
 import { observeAStar } from '../observe.js';
 import { type Scenario, SECTOR_SIZE, SECTORS_X, SECTORS_Y } from '../scenarios.js';
 import { spawnUnits } from './crowd.js';

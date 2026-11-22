@@ -1,4 +1,4 @@
-import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder';
 import { COLORS } from '../../../theme.js';
 import type { View } from '../../layout.js';
 import type { GuideModel } from '../../model/types.js';

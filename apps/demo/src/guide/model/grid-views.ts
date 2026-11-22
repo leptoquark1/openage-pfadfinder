@@ -1,5 +1,4 @@
-import type { Grid, Portal, Sector } from '@leptoquark1/openage-pfadfinder';
-import { COST_IMPASSABLE, type SectorId } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE, type Grid, type Portal, type Sector, type SectorId } from '@leptoquark1/openage-pfadfinder';
 import { type Cell, COLS, SECTOR_SIZE, SECTORS_X, SECTORS_Y } from '../scenarios.js';
 import type { EdgeScan, GraphEdge, PortalView } from './types.js';
 

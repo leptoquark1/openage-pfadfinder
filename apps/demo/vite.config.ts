@@ -13,14 +13,11 @@ export default defineConfig(({ command }) => ({
   plugins: [react(), tailwindcss()],
   publicDir: 'public',
   // The dev server uses the library's sources, so edits there hot-reload without a rebuild.
-  // Production builds keep using the published entry points in dist/.
+  // Production builds keep using the published entry point in dist/.
   resolve: {
     alias:
       command === 'serve'
-        ? [
-            { find: /^@leptoquark1\/openage-pfadfinder$/, replacement: librarySource('index.ts') },
-            { find: /^@leptoquark1\/openage-pfadfinder\/shared$/, replacement: librarySource('shared/index.ts') },
-          ]
+        ? [{ find: /^@leptoquark1\/openage-pfadfinder$/, replacement: librarySource('index.ts') }]
         : [],
   },
   build: {

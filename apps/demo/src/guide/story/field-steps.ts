@@ -1,4 +1,4 @@
-import { PathResult } from '@leptoquark1/openage-pfadfinder/shared';
+import { PathResult } from '@leptoquark1/openage-pfadfinder';
 import type { FieldTrace, GuideModel } from '../model/types.js';
 import { SECTOR_SIZE } from '../scenarios.js';
 import { FULL } from './scene.js';

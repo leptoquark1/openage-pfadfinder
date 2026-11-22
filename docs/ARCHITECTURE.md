@@ -113,16 +113,15 @@ features, including typed arrays, `WeakMap` and `WeakRef`. Exact versions are in
 
 The package is ESM-only and declares `sideEffects: false`.
 
-| Subpath    | Source                | Contents                                                       |
-| ---------- | --------------------- | -------------------------------------------------------------- |
-| `.`        | `src/index.ts`        | Classes and functions for fields, graph and pathfinding        |
-| `./shared` | `src/shared/index.ts` | Types, enums, constants, bit and coordinate helpers, cost maps |
+| Subpath | Source         | Contents                                                                                   |
+| ------- | -------------- | ------------------------------------------------------------------------------------------ |
+| `.`     | `src/index.ts` | Fields, graph, pathfinding, types, enums, constants, bit and coordinate helpers, cost maps |
 
 Two properties are easy to miss:
 
-- The main entry does not re-export the shared vocabulary. `PathResult`, `FlowDir` and `COST_*` always come from
-  `./shared`.
-- `./shared` is not a leaf module at runtime. Because `buildGrid` lives there, it also loads `Grid`, `Sector`, `Portal`,
+- `src/shared/index.ts` is an internal barrel that the main entry re-exports. It is not a package subpath, so
+  `PathResult`, `FlowDir` and `COST_*` always come from `.`.
+- The barrel is not a leaf module at runtime. Because `buildGrid` lives there, it also loads `Grid`, `Sector`, `Portal`,
   `CostField`, `PortalNode` and the heap. Bundlers drop unused parts thanks to `sideEffects: false`, Node always loads
   them.
 
@@ -147,7 +146,6 @@ Solid arrows are runtime imports, dashed arrows are type-only imports (`import t
 ```mermaid
 flowchart TB
     Main["Entry ."]
-    SharedEntry["Entry ./shared"]
 
     subgraph Lib["src/lib"]
         Pathfinding["pathfinding"]
@@ -160,8 +158,8 @@ flowchart TB
     Shared["shared<br/>types, constants, bit-ops, coordinates"]
 
     Main --> Lib
-    SharedEntry --> CostMap
-    SharedEntry --> Shared
+    Main --> CostMap
+    Main --> Shared
 
     Pathfinding --> Core
     Core --> Pathfinding
@@ -240,7 +238,7 @@ The import graph has these properties:
 | --------------------------------------------- | ---------------------------------------------------------------- |
 | `core/integrator` → `pathfinding/field-cache` | The integrator owns its cache, which lives with the route parts. |
 | `graph/grid` → `pathfinding/portal-graph`     | The grid maintains the `PortalNode` objects of the search graph. |
-| `shared/cost-map` → `lib/core`, `lib/graph`   | The adapter builds complete grids but ships in `./shared`.       |
+| `shared/cost-map` → `lib/core`, `lib/graph`   | The adapter builds complete grids but lives in `src/shared`.     |
 
 These edges are where a cycle is most likely to appear when moving code. For example, `portal-graph.ts` must import
 `Grid` as a type only, and `field-cache.ts` must not import `integrator.ts` at runtime.

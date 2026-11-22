@@ -14,8 +14,8 @@ export type LineKey =
 
 /** The program the guide walks through, with the lines its steps point at. */
 const SOURCE: readonly (readonly [string, LineKey?])[] = [
-  ["import { CostField, Grid, Pathfinder, Sector } from '@leptoquark1/openage-pfadfinder';"],
-  ["import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder/shared';"],
+  ['import { CostField, Grid, Pathfinder, Sector,'],
+  ["         COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder';"],
   [''],
   ['// 1 · One flat cost array, row-major'],
   ['const costs = new Uint8Array(24 * 18).fill(COST_MIN);', 'alloc'],

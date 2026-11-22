@@ -1,4 +1,4 @@
-import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder';
 import { describe, expect, it } from 'vitest';
 import { CELL_SIZE, World } from '../src/world/world.js';
 

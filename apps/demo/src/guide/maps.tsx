@@ -1,4 +1,4 @@
-import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder';
 import { Check, ChevronLeft, RotateCcw } from 'lucide-react';
 import { type Ref, useEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';

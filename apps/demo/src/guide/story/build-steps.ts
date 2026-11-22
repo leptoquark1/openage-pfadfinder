@@ -1,4 +1,4 @@
-import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder';
 import type { GuideModel } from '../model/types.js';
 import { COLS, COST_MUD, ROWS, SECTOR_SIZE, SECTORS_X, SECTORS_Y } from '../scenarios.js';
 import { FULL } from './scene.js';

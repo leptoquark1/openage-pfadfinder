@@ -1,4 +1,4 @@
-import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder';
 import type { ChapterId } from './story/chapters.js';
 
 export const SECTOR_SIZE = 6;

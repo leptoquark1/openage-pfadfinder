@@ -1,5 +1,4 @@
-import type { FlowRoute, Grid } from '@leptoquark1/openage-pfadfinder';
-import { COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE, type FlowRoute, type Grid } from '@leptoquark1/openage-pfadfinder';
 import { type Cell, COLS, ROWS, type Scenario } from '../scenarios.js';
 import type { UnitPath } from './types.js';
 

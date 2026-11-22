@@ -1,12 +1,11 @@
-import type { Grid } from '@leptoquark1/openage-pfadfinder';
-import type { Waypoint } from '@leptoquark1/openage-pfadfinder/shared';
+import type { Grid, Waypoint } from '@leptoquark1/openage-pfadfinder';
 import {
   COST_IMPASSABLE,
   FLOW_DIR_MASK,
   FLOW_LOS_MASK,
   FLOW_PATHABLE_MASK,
   FlowDir,
-} from '@leptoquark1/openage-pfadfinder/shared';
+} from '@leptoquark1/openage-pfadfinder';
 import { useEffect, useRef } from 'react';
 import { COLORS, type Mode } from '../theme.js';
 import {

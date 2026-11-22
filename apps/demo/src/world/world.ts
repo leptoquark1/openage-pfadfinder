@@ -1,6 +1,16 @@
-import { type FlowField, type FlowRoute, type Grid, Pathfinder, type Sector } from '@leptoquark1/openage-pfadfinder';
-import type { SectorId, Waypoint } from '@leptoquark1/openage-pfadfinder/shared';
-import { buildGrid, COST_IMPASSABLE, COST_MIN, FLOW_PATHABLE_MASK } from '@leptoquark1/openage-pfadfinder/shared';
+import {
+  buildGrid,
+  COST_IMPASSABLE,
+  COST_MIN,
+  FLOW_PATHABLE_MASK,
+  type FlowField,
+  type FlowRoute,
+  type Grid,
+  Pathfinder,
+  type Sector,
+  type SectorId,
+  type Waypoint,
+} from '@leptoquark1/openage-pfadfinder';
 import { PerfMeter } from './perf.js';
 
 /** Edge length of one grid cell in CSS pixels. */
