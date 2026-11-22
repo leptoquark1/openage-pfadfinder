@@ -94,6 +94,9 @@ jobs:
       - name: 'Run Claude Code Review'
         if: "steps.existing.outputs.reviewed != 'true'"
         uses: 'anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67' # ratchet:anthropics/claude-code-action@v1
+        env:
+          # Otherwise the run can end while the review agents are still working.
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1'
         with:
           # GITHUB_TOKEN instead of the Claude App token: with the App token,
           # reviews finished successfully without posting anything.
