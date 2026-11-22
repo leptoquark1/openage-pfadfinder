@@ -1,7 +1,6 @@
 import { INTEGRATED_COST_UNREACHABLE } from '@leptoquark1/openage-pfadfinder/shared';
-import { flowDirection } from '../model/fields.js';
+import { flowDirection, replayedField } from '../model/fields.js';
 import type { GuideModel } from '../model/types.js';
-import { replayField } from '../observe.js';
 import { type Cell, COLS, SECTOR_SIZE } from '../scenarios.js';
 import type { Scene } from './scene.js';
 
@@ -37,7 +36,7 @@ export function inspectCell(model: GuideModel, scene: Scene, cell: Cell): CellIn
     if (field.sector !== sector.getId() || writes <= 0) {
       continue;
     }
-    const state = replayField(field.writes, writes, SECTOR_SIZE);
+    const state = replayedField(field, writes);
     if (state.costs[localIndex] === INTEGRATED_COST_UNREACHABLE) {
       continue;
     }

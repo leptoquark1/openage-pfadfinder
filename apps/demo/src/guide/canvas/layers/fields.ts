@@ -6,9 +6,8 @@ import {
   INTEGRATED_COST_UNREACHABLE,
 } from '@leptoquark1/openage-pfadfinder/shared';
 import type { View } from '../../layout.js';
-import { flowDirection } from '../../model/fields.js';
+import { flowDirection, replayedField } from '../../model/fields.js';
 import type { GuideModel } from '../../model/types.js';
-import { replayField } from '../../observe.js';
 import { SECTOR_SIZE } from '../../scenarios.js';
 import type { Scene } from '../../story/scene.js';
 import { INK } from '../ink.js';
@@ -23,9 +22,9 @@ export function drawFields(ctx: CanvasRenderingContext2D, model: GuideModel, sce
     }
     const flowF = scene.fieldFlow[i] ?? 0;
     const writes = Math.floor(writesF);
-    const state = replayField(field.writes, writes, SECTOR_SIZE);
-    const recent = new Set(field.writes.slice(Math.max(0, writes - 4), writes).map(w => w.idx));
+    const state = replayedField(field, writes);
     const animating = writesF < field.writes.length;
+    const recent = animating ? new Set(field.writes.slice(Math.max(0, writes - 4), writes).map(w => w.idx)) : null;
     const sector = model.sectors[field.sector]!;
 
     for (let idx = 0; idx < SECTOR_SIZE * SECTOR_SIZE; idx++) {
@@ -60,7 +59,7 @@ export function drawFields(ctx: CanvasRenderingContext2D, model: GuideModel, sce
         ctx.stroke();
         ctx.restore();
       }
-      if (animating && recent.has(idx)) {
+      if (recent?.has(idx)) {
         const pulse = 0.5 + 0.5 * Math.sin(now / 70);
         ctx.fillStyle = `rgba(255, 255, 255, ${0.22 + pulse * 0.2})`;
         ctx.fillRect(x, y, v.s, v.s);

@@ -1,8 +1,7 @@
 import { COST_MIN, INTEGRATED_COST_UNREACHABLE } from '@leptoquark1/openage-pfadfinder/shared';
 import type { View } from '../layout.js';
-import { flowDirection } from '../model/fields.js';
-import type { FieldTrace, GuideModel, PortalView } from '../model/types.js';
-import { replayField } from '../observe.js';
+import { flowDirection, replayedField } from '../model/fields.js';
+import type { GuideModel, PortalView } from '../model/types.js';
 import { COLS, ROWS, SECTOR_SIZE, SECTORS_X, SECTORS_Y } from '../scenarios.js';
 import {
   fieldArrowProgress,
@@ -225,17 +224,6 @@ function searchOrder(model: GuideModel): SearchOrder {
 /** The width of the wave's soft edge, as a share of a field's cost range. */
 const WAVE_EDGE = 0.45;
 
-const finalFields = new WeakMap<FieldTrace, ReturnType<typeof replayField>>();
-
-function finalField(field: FieldTrace): ReturnType<typeof replayField> {
-  let state = finalFields.get(field);
-  if (!state) {
-    state = replayField(field.writes, field.writes.length, SECTOR_SIZE);
-    finalFields.set(field, state);
-  }
-  return state;
-}
-
 /** A cell's opacity as a soft wave passes it; `place` is how far from the wave's origin it lies, from 0 to 1. */
 const waveAt = (progress: number, place: number) => smooth(clamp01((progress * (1 + WAVE_EDGE) - place) / WAVE_EDGE));
 
@@ -258,7 +246,7 @@ export function drawFlowReveal(
     }
     const arrows = fieldArrowProgress(seconds, i, count);
     const sector = model.sectors[field.sector]!;
-    const { costs } = finalField(field);
+    const { costs } = replayedField(field, field.writes.length);
     const range = Math.max(1, field.maxCost);
 
     for (let idx = 0; idx < SECTOR_SIZE * SECTOR_SIZE; idx++) {
