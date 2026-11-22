@@ -1,5 +1,4 @@
-import type { FlowRoute, Grid } from '@leptoquark1/openage-pfadfinder';
-import type { Path, PortalId, SectorId, Waypoint } from '@leptoquark1/openage-pfadfinder/shared';
+import type { FlowRoute, Grid, Path, PortalId, SectorId, Waypoint } from '@leptoquark1/openage-pfadfinder';
 import type { AStarEvent, FieldWrite } from '../observe.js';
 import type { Cell, Scenario } from '../scenarios.js';
 

@@ -29,8 +29,7 @@ The package is ESM-only and ships TypeScript declarations.
 ## Usage
 
 ```typescript
-import { Pathfinder, Grid, Sector, CostField } from '@leptoquark1/openage-pfadfinder';
-import { COST_MIN, COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { Pathfinder, Grid, Sector, CostField, COST_MIN, COST_IMPASSABLE } from '@leptoquark1/openage-pfadfinder';
 
 // Create a 4×4 grid with 10×10 sectors
 const grid = new Grid(0, { width: 4, height: 4 }, 10);
@@ -124,7 +123,6 @@ packages/pfadfinder/                  Published library (@leptoquark1/openage-pf
   src/lib/graph/                      Grid, Sector, Portal
   src/lib/internal/                   BinaryHeap, Bresenham line
   src/lib/pathfinding/                Pathfinder, portal graph A*, field cache, routing
-  src/shared/index.ts                 Shared subpath entry (subpath "./shared")
   src/shared/                         Constants, bit ops, coordinates, cost-map helpers, types
   test/                               Vitest test suite
 apps/demo/                            Interactive playground (React + Vite, deployed to GitHub Pages)

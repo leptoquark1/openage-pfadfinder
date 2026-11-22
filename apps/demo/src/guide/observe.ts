@@ -1,18 +1,16 @@
 import {
   CostField,
   type Grid,
+  INTEGRATED_COST_UNREACHABLE,
   IntegrationField,
   type Portal,
+  portalAStar,
+  type PortalId,
   type PortalNode,
   type PortalStarResult,
-  portalAStar,
-} from '@leptoquark1/openage-pfadfinder';
-import {
-  INTEGRATED_COST_UNREACHABLE,
-  type PortalId,
   type SectorId,
   type TileDelta,
-} from '@leptoquark1/openage-pfadfinder/shared';
+} from '@leptoquark1/openage-pfadfinder';
 
 /**
  * The guide animates what the library really does instead of re-implementing

@@ -4,7 +4,7 @@ import {
   INTEGRATE_TARGET_MASK,
   INTEGRATE_WAVEFRONT_BLOCKED_MASK,
   INTEGRATED_COST_UNREACHABLE,
-} from '@leptoquark1/openage-pfadfinder/shared';
+} from '@leptoquark1/openage-pfadfinder';
 import type { View } from '../../layout.js';
 import { flowDirection, replayedField } from '../../model/fields.js';
 import type { GuideModel } from '../../model/types.js';

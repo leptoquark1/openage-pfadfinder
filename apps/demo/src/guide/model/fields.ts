@@ -1,10 +1,12 @@
-import type { FlowRoute, Grid, Portal } from '@leptoquark1/openage-pfadfinder';
 import {
   FLOW_DIR_MASK,
   FLOW_PATHABLE_MASK,
   FLOW_TARGET_MASK,
+  type FlowRoute,
+  type Grid,
   INTEGRATED_COST_UNREACHABLE,
-} from '@leptoquark1/openage-pfadfinder/shared';
+  type Portal,
+} from '@leptoquark1/openage-pfadfinder';
 import { observeField, replayField } from '../observe.js';
 import { type Scenario, SECTOR_SIZE } from '../scenarios.js';
 import type { FieldTrace } from './types.js';

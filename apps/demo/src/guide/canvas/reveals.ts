@@ -1,4 +1,4 @@
-import { COST_MIN, INTEGRATED_COST_UNREACHABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_MIN, INTEGRATED_COST_UNREACHABLE } from '@leptoquark1/openage-pfadfinder';
 import type { View } from '../layout.js';
 import { flowDirection, replayedField } from '../model/fields.js';
 import type { GuideModel, PortalView } from '../model/types.js';

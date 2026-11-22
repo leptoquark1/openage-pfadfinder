@@ -1,4 +1,4 @@
-import { FLOW_DIR_MASK, FLOW_TARGET_MASK } from '@leptoquark1/openage-pfadfinder/shared';
+import { FLOW_DIR_MASK, FLOW_TARGET_MASK } from '@leptoquark1/openage-pfadfinder';
 import type { View } from '../layout.js';
 import type { GuideModel } from '../model/types.js';
 import type { Cell } from '../scenarios.js';

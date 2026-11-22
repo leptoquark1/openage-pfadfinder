@@ -6,7 +6,7 @@ import {
   INTEGRATE_LOS_MASK,
   INTEGRATE_TARGET_MASK,
   INTEGRATE_WAVEFRONT_BLOCKED_MASK,
-} from '@leptoquark1/openage-pfadfinder/shared';
+} from '@leptoquark1/openage-pfadfinder';
 import type { LucideIcon } from 'lucide-react';
 import { BrickWall, ChevronRight, CircleDot, Eraser, Flag, MousePointer2, Waves } from 'lucide-react';
 import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';

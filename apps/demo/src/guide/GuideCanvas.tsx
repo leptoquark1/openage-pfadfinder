@@ -1,4 +1,4 @@
-import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder';
 import { useEffect, useRef } from 'react';
 import type { Insets } from './layout.js';
 import type { GuideModel } from './model/types.js';

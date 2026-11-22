@@ -1,6 +1,5 @@
 import { it } from 'vitest';
-import { CostField, Integrator } from '@leptoquark1/openage-pfadfinder';
-import { COST_MIN } from '@leptoquark1/openage-pfadfinder/shared';
+import { COST_MIN, CostField, Integrator } from '@leptoquark1/openage-pfadfinder';
 
 it('benchmark Integrator.get', () => {
   const integrator = new Integrator();

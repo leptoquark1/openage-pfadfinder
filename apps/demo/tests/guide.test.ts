@@ -1,5 +1,12 @@
-import { Integrator, Pathfinder, portalAStar } from '@leptoquark1/openage-pfadfinder';
-import { COST_IMPASSABLE, COST_MIN, INTEGRATE_LOS_MASK, PathResult } from '@leptoquark1/openage-pfadfinder/shared';
+import {
+  COST_IMPASSABLE,
+  COST_MIN,
+  INTEGRATE_LOS_MASK,
+  Integrator,
+  Pathfinder,
+  PathResult,
+  portalAStar,
+} from '@leptoquark1/openage-pfadfinder';
 import { describe, expect, it } from 'vitest';
 import { layoutGuide, makeView } from '../src/guide/layout.js';
 import { buildModel } from '../src/guide/model/model.js';

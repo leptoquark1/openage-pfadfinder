@@ -1,4 +1,4 @@
-import { INTEGRATED_COST_UNREACHABLE } from '@leptoquark1/openage-pfadfinder/shared';
+import { INTEGRATED_COST_UNREACHABLE } from '@leptoquark1/openage-pfadfinder';
 import { flowDirection, replayedField } from '../model/fields.js';
 import type { GuideModel } from '../model/types.js';
 import { type Cell, COLS, SECTOR_SIZE } from '../scenarios.js';
