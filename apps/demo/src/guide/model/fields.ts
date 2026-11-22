@@ -5,12 +5,25 @@ import {
   FLOW_TARGET_MASK,
   INTEGRATED_COST_UNREACHABLE,
 } from '@leptoquark1/openage-pfadfinder/shared';
-import { observeField } from '../observe.js';
+import { observeField, replayField } from '../observe.js';
 import { type Scenario, SECTOR_SIZE } from '../scenarios.js';
 import type { FieldTrace } from './types.js';
 
 type FlowStep = ReturnType<FlowRoute['getSteps']>[number];
 type FieldStages = Parameters<typeof observeField>[2];
+
+const replays = new WeakMap<FieldTrace, { count: number; state: ReturnType<typeof replayField> }>();
+
+/** A field after its first `count` writes. Frames mostly ask for the same count, so the last answer is kept. */
+export function replayedField(field: FieldTrace, count: number): ReturnType<typeof replayField> {
+  const known = replays.get(field);
+  if (known?.count === count) {
+    return known.state;
+  }
+  const state = replayField(field.writes, count, SECTOR_SIZE);
+  replays.set(field, { count, state });
+  return state;
+}
 
 /** The direction units leave a cell in; null where they follow no arrow, as on the target field's goal. */
 export function flowDirection(field: FieldTrace, byte: number): number | null {
