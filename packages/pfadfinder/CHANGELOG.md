@@ -1,5 +1,11 @@
 # @leptoquark1/openage-pfadfinder
 
+## 2.0.0
+
+### Major Changes
+
+- 88cfd49: Remove the `@leptoquark1/openage-pfadfinder/shared` subpath export. All of its types, enums, constants and helpers are now exported from the main entry, so replace `@leptoquark1/openage-pfadfinder/shared` imports with `@leptoquark1/openage-pfadfinder`.
+
 ## 1.3.1
 
 ### Patch Changes
