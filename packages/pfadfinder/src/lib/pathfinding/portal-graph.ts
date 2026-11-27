@@ -1,7 +1,7 @@
 import { tileEuclidean } from '../../shared/coordinates.js';
 import type { PortalId, SectorId, TileDelta } from '../../shared/types.js';
 import type { Grid } from '../graph/grid.js';
-import type { Portal } from '../graph/portal.js';
+import { type Portal, portalDistanceCost } from '../graph/portal.js';
 import { type HeapEntry, IntrusiveHeap } from '../internal/binary-heap.js';
 
 export interface PortalStarResult {
@@ -22,12 +22,8 @@ export class PortalNode {
   heuristicCost = 0;
   wasBest = false;
   prevPortal: PortalNode | undefined;
-  /**
-   * Distance cost to each exit, per side of this portal: two portals between
-   * the same two sectors are exits of each other on both sides, at different
-   * distances.
-   */
-  readonly exits: Map<SectorId, Map<PortalId, number>> = new Map();
+  /** The node map `initExits()` was given; exits are limited to its nodes. */
+  private nodeMap: ReadonlyMap<PortalId, PortalNode> | undefined;
   /** This node's state in the running `portalAStar()`; unset between searches. */
   search: PortalSearchNode | undefined;
 
@@ -51,34 +47,57 @@ export class PortalNode {
   }
 
   /**
-   * Initialize exit list — reachable portals from this node
-   * and their distance costs.
+   * Distance cost to each exit, per side of this portal: two portals between
+   * the same two sectors are exits of each other on both sides, at different
+   * distances. Lists the exits that have a node in the map given to
+   * `initExits()`, none before.
+   *
+   * Built on every read from the sector exit tables (`Sector.connectExits()`),
+   * which hold the exits once per sector for all its portals; A* reads those
+   * tables directly. Meant for inspection, e.g. a debug view.
+   */
+  get exits(): Map<SectorId, Map<PortalId, number>> {
+    const exits = new Map<SectorId, Map<PortalId, number>>();
+    if (this.nodeMap) {
+      for (const sector of [this.portal.getSector0(), this.portal.getSector1()]) {
+        exits.set(sector, this.getExits(sector));
+      }
+    }
+    return exits;
+  }
+
+  /**
+   * Limit the exits to portals with a node in `nodeMap`. The exits and their
+   * costs themselves come from the sectors (`Sector.connectExits()`).
    */
   initExits(nodeMap: Map<PortalId, PortalNode>): void {
-    this.exits.clear();
-    for (const sector of [this.portal.getSector0(), this.portal.getSector1()]) {
-      const costs = new Map<PortalId, number>();
-      // both centers in the local frame of the sector the exits lie in
-      const from = this.portal.getEntryCenter(sector);
-      for (const exit of this.portal.getConnected(sector)) {
-        if (nodeMap.has(exit.getId())) {
-          costs.set(exit.getId(), PortalNode.distanceCost(from, exit.getEntryCenter(sector)));
-        }
-      }
-      this.exits.set(sector, costs);
-    }
+    this.nodeMap = nodeMap;
+  }
+
+  /**
+   * The node map exits are limited to (see `initExits()`), `undefined` before.
+   *
+   * @internal
+   */
+  getExitNodes(): ReadonlyMap<PortalId, PortalNode> | undefined {
+    return this.nodeMap;
   }
 
   /**
    * Get exits for a specific sector.
    */
   getExits(sectorId: SectorId): Map<PortalId, number> {
-    const costs = this.exits.get(sectorId);
     const result = new Map<PortalId, number>();
-    for (const exit of this.portal.getConnected(sectorId)) {
-      const cost = costs?.get(exit.getId());
-      if (cost !== undefined) {
-        result.set(exit.getId(), cost);
+    const nodeMap = this.nodeMap;
+    const row = this.portal.getExitRow(sectorId);
+    if (!nodeMap || row < 0) {
+      return result;
+    }
+    const { portals, costs } = this.portal.getExitTable(sectorId);
+    for (let j = 0, at = row * portals.length; j < portals.length; j++, at++) {
+      const id = portals[j]!.getId();
+      if (costs[at] !== 0 && nodeMap.has(id)) {
+        result.set(id, costs[at]! - 1);
       }
     }
     return result;
@@ -98,7 +117,7 @@ export class PortalNode {
   }
 
   static distanceCost(a: TileDelta, b: TileDelta): number {
-    return Math.round(tileEuclidean(a, b) * 10);
+    return portalDistanceCost(a, b);
   }
 
   static heuristicCost(a: TileDelta, b: TileDelta): number {
@@ -236,15 +255,25 @@ function search(
     }
 
     // entrySector is the sector we arrive in after crossing this portal.
-    // Exits are reachable from within this sector: the portal's current
-    // exits that have a cost, as PortalNode.getExits() lists them, read
-    // in place instead of into a new map per node.
-    const exitCosts = current.portalNode.exits.get(current.entrySector);
+    // Exits are reachable from within this sector: the portals with a cost
+    // in this portal's row of the sector's exit table, in table order.
+    // Like `PortalNode.getExits()`, only exits with a node in the map the
+    // node's exits were initialized with count; none before `initExits()`.
+    const portal = current.portalNode.portal;
+    const exitNodes = current.portalNode.getExitNodes();
+    const row = exitNodes ? portal.getExitRow(current.entrySector) : -1;
+    const { portals: exits, costs: exitCosts } = portal.getExitTable(current.entrySector);
+    const exitCount = row < 0 ? 0 : exits.length;
+    const limited = exitNodes !== nodeMap;
 
-    for (const exit of current.portalNode.portal.getConnected(current.entrySector)) {
-      const exitId = exit.getId();
-      const distanceCost = exitCosts?.get(exitId);
-      if (distanceCost === undefined) {
+    for (let j = 0, at = row * exitCount; j < exitCount; j++, at++) {
+      const stored = exitCosts[at]!;
+      if (stored === 0) {
+        continue;
+      }
+      const distanceCost = stored - 1;
+      const exitId = exits[j]!.getId();
+      if (limited && !exitNodes!.has(exitId)) {
         continue;
       }
 

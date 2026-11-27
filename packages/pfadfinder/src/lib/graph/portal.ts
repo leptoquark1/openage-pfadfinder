@@ -1,4 +1,48 @@
+import { tileEuclidean } from '../../shared/coordinates.js';
 import { type CacheKey, PortalDirection, type PortalId, type SectorId, type TileDelta } from '../../shared/types.js';
+
+/**
+ * Typed array an `ExitTable` keeps its costs in, the smallest that fits the sector size.
+ *
+ * @internal
+ */
+export type ExitCosts = Uint8Array | Uint16Array | Uint32Array;
+
+/**
+ * The exits of a sector's portals with their distance costs, as
+ * `Sector.connectExits()` leaves them: row `i` belongs to `portals[i]`, and
+ * `costs[i * portals.length + j]` is the cost from it to exit `portals[j]`
+ * plus one, or 0 where `portals[j]` is no exit of it. One table serves all
+ * portals of a sector instead of a list and a cost map per portal side.
+ *
+ * Read-only; replaced as a whole when the exits change.
+ *
+ * @internal
+ */
+export interface ExitTable {
+  readonly portals: readonly Portal[];
+  readonly costs: ExitCosts;
+}
+
+/** Distance cost of the walk between two portal centers in one sector frame: `round(euclidean × 10)`. */
+export function portalDistanceCost(a: TileDelta, b: TileDelta): number {
+  return Math.round(tileEuclidean(a, b) * 10);
+}
+
+/**
+ * An empty table (no exits yet) for these portals, sized for costs up to `maxCost`.
+ *
+ * @internal
+ */
+export function makeExitTable(portals: readonly Portal[], maxCost: number): ExitTable {
+  const cells = portals.length * portals.length;
+  // costs are stored plus one, so 0 is left for "no exit"
+  const costs =
+    maxCost < 0xff ? new Uint8Array(cells) : maxCost < 0xffff ? new Uint16Array(cells) : new Uint32Array(cells);
+  return { portals, costs };
+}
+
+const NO_EXITS: ExitTable = { portals: [], costs: new Uint8Array(0) };
 
 /**
  * Bidirectional gateway connecting two adjacent sectors.
@@ -13,8 +57,11 @@ export class Portal {
   private readonly direction: PortalDirection;
   private readonly cellStart: TileDelta;
   private readonly cellEnd: TileDelta;
-  private sector0Exits: Portal[] = [];
-  private sector1Exits: Portal[] = [];
+  /** The exit table of each side and this portal's row in it (see `ExitTable`). */
+  private exits0: ExitTable = NO_EXITS;
+  private exits1: ExitTable = NO_EXITS;
+  private row0 = -1;
+  private row1 = -1;
   /** Derived from the immutable cell range on first use, per sector side. */
   private entryCenter0: TileDelta | undefined;
   private entryCenter1: TileDelta | undefined;
@@ -53,14 +100,24 @@ export class Portal {
     return this.sector1;
   }
 
+  /**
+   * The exits on one side: portals of that sector reachable from this one
+   * inside it, in the sector's portal order. A fresh array on every call.
+   */
   getConnected(sectorId: SectorId): Portal[] {
-    if (sectorId === this.sector0) {
-      return this.sector0Exits;
+    const table = this.getExitTable(sectorId);
+    const row = this.getExitRow(sectorId);
+    const exits: Portal[] = [];
+    if (row < 0) {
+      return exits;
     }
-    if (sectorId === this.sector1) {
-      return this.sector1Exits;
+    const count = table.portals.length;
+    for (let j = 0, at = row * count; j < count; j++, at++) {
+      if (table.costs[at] !== 0) {
+        exits.push(table.portals[j]!);
+      }
     }
-    return [];
+    return exits;
   }
 
   getExits(sectorId: SectorId): Portal[] {
@@ -77,11 +134,58 @@ export class Portal {
     return -1;
   }
 
+  /**
+   * Replace the exits on one side.
+   *
+   * @deprecated `Sector.connectExits()` sets the exits of all portals of a
+   * sector at once and keeps them more compactly; this gives the portal a
+   * table of its own. Kept for compatibility.
+   */
   setExits(sectorId: SectorId, exits: Portal[]): void {
+    if (sectorId !== this.sector0 && sectorId !== this.sector1) {
+      return;
+    }
+    const portals = [this, ...exits];
+    const from = this.getEntryCenter(sectorId);
+    const costs = exits.map(exit => portalDistanceCost(from, exit.getEntryCenter(sectorId)));
+    const table = makeExitTable(portals, Math.max(0, ...costs));
+    for (const [j, cost] of costs.entries()) {
+      table.costs[j + 1] = cost + 1;
+    }
+    this.setExitRow(sectorId, table, 0);
+  }
+
+  /**
+   * The exit table of one side; empty for a sector this portal does not
+   * connect or before its exits were set.
+   *
+   * @internal
+   */
+  getExitTable(sectorId: SectorId): ExitTable {
+    return sectorId === this.sector0 ? this.exits0 : sectorId === this.sector1 ? this.exits1 : NO_EXITS;
+  }
+
+  /**
+   * This portal's row in the exit table of one side, -1 without one.
+   *
+   * @internal
+   */
+  getExitRow(sectorId: SectorId): number {
+    return sectorId === this.sector0 ? this.row0 : sectorId === this.sector1 ? this.row1 : -1;
+  }
+
+  /**
+   * Point one side at its row of an exit table (by `Sector.connectExits()`).
+   *
+   * @internal
+   */
+  setExitRow(sectorId: SectorId, table: ExitTable, row: number): void {
     if (sectorId === this.sector0) {
-      this.sector0Exits = exits;
+      this.exits0 = table;
+      this.row0 = row;
     } else if (sectorId === this.sector1) {
-      this.sector1Exits = exits;
+      this.exits1 = table;
+      this.row1 = row;
     }
   }
 
