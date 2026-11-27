@@ -106,9 +106,9 @@ A* search data for one portal, pre-built by `grid.initPortalNodes()`.
 | `currentCost`, `heuristicCost`, `futureCost`, `wasBest` | A* bookkeeping. |
 | `prevPortal` | Previous node in the search tree. |
 | `search` | This node's state while `portalAStar()` runs; `undefined` between searches. |
-| `exits: Map<SectorId, Map<PortalId, number>>` | Distance cost to each reachable exit portal, per side of this portal (two portals between the same sectors are exits of each other on both sides at different distances). |
-| `initExits(nodeMap)` | (Re)compute `exits` from the node map. Called by the grid. |
-| `getExits(sectorId)` | Exit costs for one side, restricted to portals present in the graph. |
+| `exits: Map<SectorId, Map<PortalId, number>>` | Distance cost to each reachable exit portal, per side of this portal (two portals between the same sectors are exits of each other on both sides at different distances). Read-only and built fresh on every read from the sectors' exit tables (see `Sector.connectExits()`); for inspection, A* reads the tables directly. |
+| `initExits(nodeMap)` | Limit the exits to portals with a node in `nodeMap`; before the first call a node has no exits. Called by the grid. |
+| `getExits(sectorId)` | Exit costs for one side, restricted to portals in the node map given to `initExits()`. |
 | `generateBacktrace()` | Portal chain from this node back to the start. |
 | `static distanceCost(a, b)` / `static heuristicCost(a, b)` | `round(euclidean × 10)`. |
 | `static localToGlobal(grid, sectorId, localNe, localSe)` | Sector-local → global tile coordinates. |
@@ -154,7 +154,7 @@ findPortals(                                     // portals on the shared edge w
   reuse?: readonly Portal[],                     // existing portals to return again when they span a found range
 ): Portal[]
 getAreas(): Uint16Array | Int32Array;            // area id per local cell: 4-connected passable cells share one (from 1), walls have 0
-connectExits();                                  // make portals exits of each other when their entry cells share an area
+connectExits();                                  // make portals exits of each other when their entry cells share an area, with their distance costs in one table per sector
 ```
 
 `getAreas()` answers whether two cells of a sector reach each other inside it: they do exactly when they have the same area. The labels are computed on first use and again after the cost field changed (by its version), so asking is an array read; `connectExits()` and the pathfinder use them. Do not write to the returned array.
@@ -217,9 +217,10 @@ new Portal(id, sector0, sector1, direction: PortalDirection, cellStart: TileDelt
 // cellStart/cellEnd are the local coordinates of the covered edge cells (start → end along the portal's axis)
 
 getId(), getDirection();
-getConnected(sectorId): Portal[];   // portals reachable across this edge from that side
-getExits(sectorId): Portal[];       // exit cells' neighbor portals on that side (set by Sector.connectExits)
-setExits(sectorId, exits);          getExitSector(sectorId): SectorId;
+getConnected(sectorId): Portal[];   // portals reachable inside that sector, in its portal order (a fresh array per call)
+getExits(sectorId): Portal[];       // same as getConnected (set by Sector.connectExits)
+setExits(sectorId, exits);          // deprecated: gives this side a table of its own; Sector.connectExits() sets all at once
+getExitSector(sectorId): SectorId;
 matches(other: Portal): boolean;    // same sectors, direction and cell range (id-independent comparison for rebuilds)
 spans(sector0, sector1, direction, cellStart, cellEnd): boolean;  // same check against a bare range, before a portal exists for it
 

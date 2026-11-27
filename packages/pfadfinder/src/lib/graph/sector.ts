@@ -2,7 +2,7 @@ import { COST_IMPASSABLE } from '../../shared/constants.js';
 import { xyToIndex } from '../../shared/coordinates.js';
 import { PortalDirection, type PortalId, type SectorId, type Vector2s } from '../../shared/types.js';
 import type { CostField } from '../core/cost-field.js';
-import { Portal } from './portal.js';
+import { makeExitTable, Portal, portalDistanceCost } from './portal.js';
 
 /**
  * Sector — a square subdivision of a Grid.
@@ -162,15 +162,19 @@ export class Sector {
   /**
    * Connect mutually reachable portals within this sector: two portals are
    * exits of each other when their entry cells share an area (`getAreas()`),
-   * i.e. are not split by walls.
+   * i.e. are not split by walls. Their distance costs (`portalDistanceCost`
+   * between the entry centers) go into one table for the whole sector, which
+   * every portal of the sector reads its exits from (`Portal.getConnected()`).
    * Must be called after all sectors and portals are initialized.
    */
   connectExits(): void {
     const size = this.costField.getSize();
     const areas = this.getAreas();
+    const portals = this.portals.slice();
+    const count = portals.length;
 
     // The areas each portal's passable entry cells on this side lie in
-    const portalAreas = this.portals.map(portal => {
+    const portalAreas = portals.map(portal => {
       const entryStart = portal.getEntryStart(this.id);
       const entryEnd = portal.getEntryEnd(this.id);
       const found = new Set<number>();
@@ -184,13 +188,22 @@ export class Sector {
       }
       return found;
     });
+    const centers = portals.map(portal => portal.getEntryCenter(this.id));
 
-    for (const [i, portal] of this.portals.entries()) {
-      const own = portalAreas[i]!;
-      const connectedPortals = this.portals.filter(
-        (other, j) => other.getId() !== portal.getId() && sharesArea(own, portalAreas[j]!),
-      );
-      portal.setExits(this.id, connectedPortals);
+    // Entry centers lie inside the sector, so no cost exceeds its diagonal.
+    const table = makeExitTable(portals, portalDistanceCost({ ne: 0, se: 0 }, { ne: size, se: size }));
+    const { costs } = table;
+    for (let i = 0; i < count; i++) {
+      const id = portals[i]!.getId();
+      for (let j = i + 1; j < count; j++) {
+        if (portals[j]!.getId() !== id && sharesArea(portalAreas[i]!, portalAreas[j]!)) {
+          // the distance is symmetric, and stored plus one (0 means no exit)
+          const cost = portalDistanceCost(centers[i]!, centers[j]!) + 1;
+          costs[i * count + j] = cost;
+          costs[j * count + i] = cost;
+        }
+      }
+      portals[i]!.setExitRow(this.id, table, i);
     }
   }
 }

@@ -285,7 +285,7 @@ classDiagram
     }
     class PortalNode {
         +portal Portal
-        +exits Map~SectorId, Map~
+        +exits Map~SectorId, Map~ derived
         +search PortalSearchNode
         +initExits(nodeMap)
     }
@@ -303,7 +303,7 @@ classDiagram
     Sector "1" o-- "1" CostField
     Sector "2" o-- "*" Portal : share
     PortalNode "1" --> "1" Portal
-    Portal --> Portal : exits per side
+    Portal --> Portal : exits per side, one cost table per sector
 ```
 
 The computed fields, their cache and the routes form the second part of the model:
@@ -439,14 +439,14 @@ sequenceDiagram
         Sector-->>Grid: one portal per passable stretch
         Grid->>Sector: addPortal() on both sides
         Grid->>Sector: connectExits()
-        Note over Sector: Portals in the same area<br/>become exits of each other
+        Note over Sector: Portals in the same area become exits<br/>of each other, costs in one table per sector
     end
     Build->>Grid: initPortalNodes()
     loop each portal
         Grid->>Node: new PortalNode(portal)
     end
     Grid->>Node: initExits(nodeMap)
-    Note over Node: Distance to each exit,<br/>separately per portal side
+    Note over Node: Limits exits to the node map;<br/>costs stay in the sector tables
     Build-->>App: Grid
 ```
 
@@ -547,7 +547,7 @@ flowchart LR
 | ----------- | ------------------------------------------------------------------------------------- |
 | State       | Portal plus `entrySector`, the sector you arrive in after crossing it                 |
 | Start       | All portals the start reaches in its own sector, `g = round(10 × distance)`           |
-| Edge weight | `round(10 × distance)` between portal centers, precomputed in `PortalNode.exits`      |
+| Edge weight | `round(10 × distance)` between portal centers, precomputed per sector in its exit table |
 | Heuristic   | `h = round(10 × distance(portal center, target))` in global coordinates               |
 | Priority    | `f = g + h` in the `IntrusiveHeap`                                                    |
 | Termination | As soon as a target portal is popped from the open set                                |
@@ -698,7 +698,7 @@ one built from scratch.
 | Portal fields      | `FieldCache.cache`   | Portal cell range  | Cost field version changes | Number of portal ranges |
 | Target fields      | `FieldCache.targets` | Cell index         | Cost field version changes | LRU, 4 per cost field |
 | Portal center, key | `Portal`             | Portal side        | Immutable                  | Two per portal        |
-| Exit distances     | `PortalNode.exits`   | Sector, portal id  | `rebuildPortalNodes()`     | Portal graph          |
+| Exit distances     | Sector exit table    | Portal pair        | `connectExits()`           | k² per sector (k portals) |
 
 ```mermaid
 flowchart TD
@@ -909,7 +909,7 @@ Tests are organized by topic:
 | Goal                            | Start at                                         | Watch out for                                                |
 | ------------------------------- | ------------------------------------------------ | ------------------------------------------------------------ |
 | New meaning for cell costs      | `shared/constants.ts`, `IntegrationField`        | LOS treats everything above `COST_MIN` as an obstacle        |
-| Portal selection by terrain cost | `PortalNode.initExits()`, `portalAStar()`       | Recompute exits after cost changes, keep the heuristic admissible |
+| Portal selection by terrain cost | `Sector.connectExits()`, `portalAStar()`        | Recompute exits after cost changes, keep the heuristic admissible |
 | LOS across several sectors      | `Pathfinder.getPathMultiSector()`, `getPortal()` | Fields with LOS depend on the target and must not be shared  |
 | New cache level                 | `Integrator`, `FieldCache`                       | The key must cover every input of the field                  |
 | New flag                        | `shared/constants.ts`                            | Keep integration and flow bits from colliding                |

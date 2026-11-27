@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { CostField, Grid, Sector } from '../src/index.js';
+import { describe, expect, it, vi } from 'vitest';
+import { CostField, Grid, PortalNode, Sector } from '../src/index.js';
 import { COST_IMPASSABLE, COST_MIN } from '../src/shared/constants.js';
 import { buildGrid } from '../src/shared/cost-map/cost-map.js';
 import { freshPortalGraphOf, portalGraphOf, portalLayoutOf } from './helpers.js';
@@ -177,6 +177,8 @@ describe('Grid.rebuildPortals incremental update', () => {
     const border01 = sector0.getPortals()[0]!.getId();
     const far = grid.getPortalMap().get(sector3.getPortals()[0]!.getId())!;
     const farExits = far.exits.get(2);
+    const initExits = vi.spyOn(PortalNode.prototype, 'initExits');
+    const refreshed = (): PortalNode[] => initExits.mock.contexts as PortalNode[];
 
     // A wall on border 0|1 drops its portal; sectors 0 and 1 changed.
     for (let y = 0; y < size; y++) {
@@ -192,7 +194,8 @@ describe('Grid.rebuildPortals incremental update', () => {
     expect([...border12.exits.get(1)!.keys()]).toEqual([]);
     // Border 2|3 lies outside the changed sectors and was left alone.
     expect(grid.getPortalMap().get(far.portal.getId())).toBe(far);
-    expect(far.exits.get(2)).toBe(farExits);
+    expect(refreshed()).not.toContain(far);
+    expect(far.exits.get(2)).toEqual(farExits);
     expect(portalGraphOf(grid.getPortalMap())).toEqual(freshPortalGraphOf(grid));
 
     // Undo: the portal comes back with a node of its own.
@@ -204,8 +207,11 @@ describe('Grid.rebuildPortals incremental update', () => {
     expect(portalGraphOf(grid.getPortalMap())).toEqual(freshPortalGraphOf(grid));
 
     // Nothing changed, nothing to do.
+    initExits.mockClear();
     grid.rebuildPortalNodes(new Set());
-    expect(far.exits.get(2)).toBe(farExits);
+    expect(refreshed()).toEqual([]);
+    expect(far.exits.get(2)).toEqual(farExits);
+    initExits.mockRestore();
   });
 
   it('lists the portals of a sector in the order of a full build after a portal was split', () => {
