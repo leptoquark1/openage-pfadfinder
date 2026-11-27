@@ -61,3 +61,42 @@ describe('FieldCache', () => {
     expect(cache.size).toBe(0);
   });
 });
+
+describe('FieldCache target fields', () => {
+  it('returns the entry it drops beyond MAX_TARGETS', () => {
+    const cache = new FieldCache();
+    const entries = Array.from({ length: FieldCache.MAX_TARGETS + 1 }, () => entry(0));
+    for (let cell = 0; cell < FieldCache.MAX_TARGETS; cell++) {
+      expect(cache.addTarget(cell, entries[cell]!)).toBeUndefined();
+    }
+    expect(cache.getTarget(0)).toBe(entries[0]); // now the most recently used
+    expect(cache.addTarget(99, entries[FieldCache.MAX_TARGETS]!)).toBe(entries[1]);
+    expect(cache.targetCount).toBe(FieldCache.MAX_TARGETS);
+    expect(cache.getTarget(1)).toBeUndefined();
+  });
+
+  it('returns a replaced entry of the same cell, but not a re-added one', () => {
+    const cache = new FieldCache();
+    const first = entry(0);
+    const second = entry(1);
+    cache.addTarget(5, first);
+    expect(cache.addTarget(5, first)).toBeUndefined();
+    expect(cache.addTarget(5, second)).toBe(first);
+    expect(cache.getTarget(5)).toBe(second);
+  });
+
+  it('evicts single targets and lists what it holds', () => {
+    const cache = new FieldCache();
+    const portal = entry(0);
+    const target = entry(0);
+    cache.add(makeCacheKey(1, 2), portal);
+    cache.addTarget(7, target);
+
+    expect([...cache.portalEntries()]).toEqual([[makeCacheKey(1, 2), portal]]);
+    expect([...cache.targetEntries()]).toEqual([[7, target]]);
+    expect(cache.evictTarget(7)).toBe(true);
+    expect(cache.evictTarget(7)).toBe(false);
+    expect(cache.targetCount).toBe(0);
+    expect(cache.size).toBe(1);
+  });
+});

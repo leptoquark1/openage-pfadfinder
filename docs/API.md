@@ -38,12 +38,13 @@ The main interface. Holds registered grids and coordinates both stages of pathfi
 
 | Member | Signature | Description |
 | ------ | --------- | ----------- |
-| `constructor()` | — | Create an empty pathfinder. |
+| `constructor(options?)` | `(options?: PathfinderOptions)` | Create an empty pathfinder. `options.maxPortalFields` and `options.maxTargetFields` bound the fields it caches over all its grids (see `Integrator`); without them the cache grows with the portals the routes pass. |
 | `addGrid` | `(grid: Grid): void` | Register a grid for lookups by id. |
 | `getGrid` | `(id: GridId): Grid \| undefined` | Look up a registered grid. |
 | `getPath` | `(request: PathRequest): Path` | Plan a path and walk the flow fields once, returning waypoints (start cell, one per direction change, target). Returns `PathResult.NOT_FOUND` or `OUT_OF_BOUNDS` on failure; an unreachable target yields no route rather than a partial one. |
 | `getFlowRoute` | `(request: PathRequest): FlowRoute \| null` | Plan without walking: returns the shared flow fields of the route, so many units can follow it via `route.next()`. Returns `null` when there is no route. |
 | `getCachedFieldCount` | `(): number` | Number of entries in the pathfinder's field cache (integration + flow field pairs per portal-sector pair). |
+| `getCachedTargetFieldCount` | `(): number` | Number of cached field pairs towards target cells. |
 
 ## Routing: `FlowRoute`, `FlowStep`
 
@@ -290,8 +291,15 @@ interface IntegrationFlowPair {
   readonly flowField: FlowField;
 }
 
+interface IntegratorOptions {
+  readonly maxPortalFields?: number;   // portal fields kept over all cost fields, least recently used dropped first
+  readonly maxTargetFields?: number;   // target fields kept over all cost fields, on top of MAX_TARGETS per cost field
+}
+
 class Integrator {
-  getCachedFieldCount(): number;
+  constructor(options?: IntegratorOptions);
+  getCachedFieldCount(): number;       // portal fields
+  getCachedTargetFieldCount(): number; // target fields
   integrate(costField, target: TileDelta, withLos = true): IntegrationField;      // no cache
   integratePortal(costField, other, otherSectorId, portal, target, withLos = true); // no cache; costs from the whole portal, LOS marks on top
   build(integrationField): FlowField;                                             // no cache
@@ -311,6 +319,8 @@ The cached fields hold costs and directions only, integrated from the whole port
 
 `getTargetShared()` does the same for the fields towards a target cell, with line of sight, so units heading for one cell share them. Each cost field keeps the fields of its `FieldCache.MAX_TARGETS` (4) most recently used targets; like portal fields they are dropped once the cost field changes. The pathfinder uses it for the target sector of its routes.
 
+**Bounds.** Without options, the portal fields grow with the portals routes pass, and the target fields with the cost fields routes end in, over every grid of the integrator. `maxPortalFields` and `maxTargetFields` bound each kind over all cost fields together; beyond a bound the least recently used pair is dropped. A dropped field is computed again on its next use and comes out the same, so routes do not change, only planning gets slower when a bound is below the fields in use. Both take a non-negative integer or `Infinity` (unbounded); anything else throws a `RangeError`. With sector size 16, a pair takes about 0.9 KB, plus about 0.1 KB for the bookkeeping of a bound. A bound holds its fields strongly: the fields of a grid no longer in use are released once newer fields push them out.
+
 ## Field cache
 
 ```typescript
@@ -324,11 +334,14 @@ class FieldCache {
   version: number;            // cost field version the contents belong to (set by the owner)
   static readonly MAX_TARGETS: number;  // target fields kept, least recently used dropped first
   add(key, entry), evict(key): boolean, isCached(key): boolean, get(key);
-  getTarget(cell), addTarget(cell, entry);  // fields towards a target cell, by its index
+  getTarget(cell), addTarget(cell, entry);  // fields towards a target cell, by its index; addTarget returns the entry it dropped
+  evictTarget(cell): boolean;
+  portalEntries(), targetEntries();          // iterators over the held entries, by key / by cell
   getIntegrationField(key), getFlowField(key);
   getCostFieldVersion(key), setCostFieldVersion(key, version);
   clear();                    // portal and target fields
   get size(): number;         // portal fields
+  get targetCount(): number;  // target fields
 }
 
 function makeCacheKey(portalId: number, sectorId: number): CacheKey; // "portalId:sectorId"

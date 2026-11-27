@@ -4,7 +4,7 @@
 export { CostField } from './lib/core/cost-field.js';
 export { FlowField } from './lib/core/flow-field.js';
 export { IntegrationField } from './lib/core/integration-field.js';
-export type { IntegrationFlowPair } from './lib/core/integrator.js';
+export type { IntegrationFlowPair, IntegratorOptions } from './lib/core/integrator.js';
 export { Integrator } from './lib/core/integrator.js';
 
 // --- Library: spatial graph (src/lib/graph) ---
@@ -27,6 +27,7 @@ export {
   pathNotFound,
   pathOutOfBounds,
 } from './lib/pathfinding/path-result.js';
+export type { PathfinderOptions } from './lib/pathfinding/pathfinder.js';
 export { Pathfinder } from './lib/pathfinding/pathfinder.js';
 export type { PortalStarResult } from './lib/pathfinding/portal-graph.js';
 export { PortalNode, portalAStar } from './lib/pathfinding/portal-graph.js';

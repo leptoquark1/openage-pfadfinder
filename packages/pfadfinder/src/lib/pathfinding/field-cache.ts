@@ -43,13 +43,28 @@ export class FieldCache {
     return entry;
   }
 
-  /** Keeps the fields towards a target cell, dropping the least recently used beyond `MAX_TARGETS`. */
-  addTarget(cell: number, entry: CacheEntry): void {
+  /**
+   * Keeps the fields towards a target cell, dropping the least recently used
+   * beyond `MAX_TARGETS`. Returns the dropped entry, if any.
+   */
+  addTarget(cell: number, entry: CacheEntry): CacheEntry | undefined {
+    // A replaced entry for the same cell counts as dropped; then the cache
+    // is below its bound and drops nothing else.
+    const replaced = this.targets.get(cell);
+    let dropped = replaced === entry ? undefined : replaced;
     this.targets.delete(cell);
     if (this.targets.size >= FieldCache.MAX_TARGETS) {
-      this.targets.delete(this.targets.keys().next().value!);
+      const [oldest, oldestEntry] = this.targets.entries().next().value!;
+      this.targets.delete(oldest);
+      dropped = oldestEntry;
     }
     this.targets.set(cell, entry);
+    return dropped;
+  }
+
+  /** Drop the fields towards a target cell. Returns true when they were held. */
+  evictTarget(cell: number): boolean {
+    return this.targets.delete(cell);
   }
 
   evict(key: CacheKey): boolean {
@@ -91,6 +106,21 @@ export class FieldCache {
   /** Portal fields held; target fields are not counted. */
   get size(): number {
     return this.cache.size;
+  }
+
+  /** Target fields held (at most `MAX_TARGETS`). */
+  get targetCount(): number {
+    return this.targets.size;
+  }
+
+  /** The portal field entries held, by key. */
+  portalEntries(): MapIterator<[CacheKey, CacheEntry]> {
+    return this.cache.entries();
+  }
+
+  /** The target field entries held, by target cell. */
+  targetEntries(): MapIterator<[number, CacheEntry]> {
+    return this.targets.entries();
   }
 }
 
