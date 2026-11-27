@@ -695,8 +695,8 @@ one built from scratch.
 | Data               | Location             | Key                | Valid until                | Bound                 |
 | ------------------ | -------------------- | ------------------ | -------------------------- | --------------------- |
 | Areas              | `Sector`             | –                  | Cost field version changes | One per sector        |
-| Portal fields      | `FieldCache.cache`   | Portal cell range  | Cost field version changes | Number of portal ranges |
-| Target fields      | `FieldCache.targets` | Cell index         | Cost field version changes | LRU, 4 per cost field |
+| Portal fields      | `FieldCache.cache`   | Portal cell range  | Cost field version changes | Number of portal ranges; optional LRU over all cost fields (`maxPortalFields`) |
+| Target fields      | `FieldCache.targets` | Cell index         | Cost field version changes | LRU, 4 per cost field; optional LRU over all cost fields (`maxTargetFields`) |
 | Portal center, key | `Portal`             | Portal side        | Immutable                  | Two per portal        |
 | Exit distances     | Sector exit table    | Portal pair        | `connectExits()`           | k² per sector (k portals) |
 
@@ -709,9 +709,13 @@ flowchart TD
     Dirty -- no --> Lookup
     Create --> Lookup{"Entry exists?"}
     Clear --> Lookup
-    Lookup -- yes --> Hit(["shared fields"])
+    Lookup -- yes --> Touch["Mark as most<br/>recently used"]
+    Touch --> Hit(["shared fields"])
     Lookup -- no --> Compute["Compute and<br/>store fields"]
-    Compute --> Hit
+    Compute --> Bound{"Beyond a bound<br/>of the integrator?"}
+    Bound -- yes --> Drop["Drop the least recently<br/>used field of any cost field"]
+    Bound -- no --> Hit
+    Drop --> Hit
 ```
 
 ```mermaid
@@ -731,8 +735,15 @@ stateDiagram-v2
 
 The cache is separate per `CostField`. Fields of different grids therefore cannot mix, and the cache of a replaced grid
 is released along with it. The additional `WeakRef`s exist only for counting in `getCachedFieldCount()`. That value
-excludes target fields and can still include stale entries after a change, until the affected cost field is requested
-again.
+excludes target fields (`getCachedTargetFieldCount()` counts those) and can still include stale entries after a change,
+until the affected cost field is requested again.
+
+With `maxPortalFields` or `maxTargetFields` set, the integrator also keeps one LRU per field kind over all its caches,
+a `Map` from entry to cache and key in order of use. A hit moves the entry to the end, a new entry beyond the bound
+drops the first one from its cache. Entries a cache drops by itself (cleared after a change, or beyond `MAX_TARGETS`)
+leave the LRU too, so they do not push out live fields. Dropping is safe for determinism: a field depends only on the
+cost field and the portal range or target cell, so it is computed again bit for bit. The LRU holds its entries
+strongly; those of a released grid stay until newer fields push them out, which the bound limits.
 
 The integrator offers four kinds of access:
 
@@ -765,7 +776,7 @@ The integrator offers four kinds of access:
 | **Bit fields**           | Direction and flags in one byte                      | One byte per flow cell, as in the C++ original  |
 | **Flyweight**            | Many units and routes share fields                   | Field memory and planning do not grow with units |
 | **Cache-aside**          | `Integrator` checks `FieldCache`, computes on a miss | Expensive integration runs only once            |
-| **LRU**                  | `FieldCache.targets` via `Map` insertion order       | Bounded memory for target fields                |
+| **LRU**                  | `FieldCache.targets` and the integrator's optional bounds via `Map` insertion order | Bounded memory for cached fields |
 | **Weak references**      | `WeakMap` and `WeakRef` per `CostField`              | No manual cleanup of replaced grids             |
 | **Lazy initialization**  | `Sector.getAreas()`, portal centers and range keys   | Costs arise only when needed                    |
 | **Intrusive data structure** | `HeapEntry.index`, `PortalNode.search`           | Position and state access without a lookup      |

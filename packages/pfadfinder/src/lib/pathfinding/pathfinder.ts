@@ -2,13 +2,20 @@ import { COST_IMPASSABLE } from '../../shared/constants.js';
 import { tileToIndex, xyToIndex } from '../../shared/coordinates.js';
 import type { GridId, Path, PathRequest } from '../../shared/types.js';
 import type { IntegrationField } from '../core/integration-field.js';
-import { Integrator } from '../core/integrator.js';
+import { Integrator, type IntegratorOptions } from '../core/integrator.js';
 import type { Grid } from '../graph/grid.js';
 import type { Portal } from '../graph/portal.js';
 import type { Sector } from '../graph/sector.js';
 import { FlowRoute, type FlowStep } from './flow-route.js';
 import { pathNotFound, pathOutOfBounds } from './path-result.js';
 import { portalAStar } from './portal-graph.js';
+
+/**
+ * Options for a `Pathfinder`: bounds for the fields it caches over all its
+ * grids (see `IntegratorOptions`). Without them the cache grows with the
+ * portals the routes pass, as in 2.0.
+ */
+export type PathfinderOptions = IntegratorOptions;
 
 /**
  * Pathfinder — main interface for flow-field pathfinding.
@@ -32,8 +39,8 @@ export class Pathfinder {
   private readonly grids: Map<GridId, Grid> = new Map();
   private readonly integrator: Integrator;
 
-  constructor() {
-    this.integrator = new Integrator();
+  constructor(options: PathfinderOptions = {}) {
+    this.integrator = new Integrator(options);
   }
 
   addGrid(grid: Grid): void {
@@ -47,6 +54,11 @@ export class Pathfinder {
   /** Portal fields cached for reuse across requests, e.g. for a debug view. */
   getCachedFieldCount(): number {
     return this.integrator.getCachedFieldCount();
+  }
+
+  /** Target fields cached for reuse across requests (see `getCachedFieldCount()`). */
+  getCachedTargetFieldCount(): number {
+    return this.integrator.getCachedTargetFieldCount();
   }
 
   /**
