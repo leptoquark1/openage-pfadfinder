@@ -1,7 +1,6 @@
 {
   "name": "@leptoquark1/openage-pfadfinder-crowd",
   "version": "0.0.0",
-  "private": true,
   "description": "Crowd simulation on top of openage-pfadfinder: steering, avoidance, lane formation and congestion costs",
   "keywords": [
     "crowd-simulation",
@@ -52,7 +51,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepack": "node -e \"fs.copyFileSync('../../LICENSE', 'LICENSE')\"",
-    "check:package": "publint && attw --pack . --profile esm-only"
+    "check:package": "publint && attw --pack . --profile esm-only",
+    "prepublishOnly": "pnpm -w run check"
   },
   "peerDependencies": {
     "@leptoquark1/openage-pfadfinder": "^2.0.0"

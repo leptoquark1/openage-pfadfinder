@@ -2,7 +2,9 @@
 
 Crowd simulation on top of [`@leptoquark1/openage-pfadfinder`](../pfadfinder): units follow the pathfinder's shared flow fields and move as a crowd — predictive collision avoidance, lane formation in counter-flow, and congestion that feeds back into the route costs. Every part is an exchangeable strategy.
 
-> **Status:** in development inside the workspace (`private`, `0.0.0`), not published yet.
+```bash
+pnpm add @leptoquark1/openage-pfadfinder @leptoquark1/openage-pfadfinder-crowd
+```
 
 ## Quick start
 

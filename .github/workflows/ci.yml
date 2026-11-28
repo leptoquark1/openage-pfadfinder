@@ -81,7 +81,7 @@ jobs:
           # Paths that change the published package and therefore need a changeset.
           # Must match changedFilePatterns in .changeset/config.json (which are
           # relative to the package directory).
-          RELEASE_RE='^packages/pfadfinder/(src/|package\.json$)'
+          RELEASE_RE='^packages/(pfadfinder|crowd)/(src/|package\.json$)'
           CHANGESET_RE='^\.changeset/[^/]+\.md$'
 
           # Capture matches instead of piping into `grep -q`: with pipefail, an early
@@ -164,7 +164,7 @@ jobs:
           if [ "$RELEASE_CHANGED" = "true" ]; then
             pnpm exec changeset status --since="origin/$BASE_REF" --verbose
           elif [ "$CHANGESET_ADDED" = "true" ]; then
-            echo "::error::Changeset added or modified, but no files under packages/pfadfinder/src/ or packages/pfadfinder/package.json changed. Version bumps are only allowed for package changes."
+            echo "::error::Changeset added or modified, but no files under packages/{pfadfinder,crowd}/src/ or packages/{pfadfinder,crowd}/package.json changed. Version bumps are only allowed for package changes."
             exit 1
           fi
 

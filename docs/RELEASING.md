@@ -1,19 +1,21 @@
 # Releasing
 
-Versioning and releases of `@leptoquark1/openage-pfadfinder` are managed with
-[Changesets](https://github.com/changesets/changesets).
+Versioning and releases of `@leptoquark1/openage-pfadfinder` and
+`@leptoquark1/openage-pfadfinder-crowd` are managed with
+[Changesets](https://github.com/changesets/changesets). Each package has its own
+version and `CHANGELOG.md`.
 
 ## Rule: the version only changes for package changes
 
-The library lives in `packages/pfadfinder/`. Package changes are changes under
-`packages/pfadfinder/src/` (including renames and deletions) and to
-`packages/pfadfinder/package.json`. The private workspace root and the demo app
+The library lives in `packages/pfadfinder/`, the crowd plugin in `packages/crowd/`.
+Package changes are changes under `packages/<package>/src/` (including renames
+and deletions) and to `packages/<package>/package.json`. The private workspace root and the demo app
 (`apps/demo`, listed under `ignore`) are never versioned.
 
 - Package changes **require** a changeset (`pnpm changeset`). If no release is
   warranted (e.g. a devDependency bump), use `pnpm changeset add --empty`.
   - Moves and renames count too: CI and Changesets see a file moved under
-    `packages/pfadfinder/src/` as deleted plus added, so a pure restructuring
+    `packages/<package>/src/` as deleted plus added, so a pure restructuring
     needs an (empty) changeset as well.
   - An empty changeset has no package entries in its frontmatter. The next
     `changeset version` deletes it without bumping a version or writing a
@@ -40,9 +42,13 @@ build and package validation. Only PRs that change nothing but documentation
    changelog text, commit both, open a PR.
 2. After the merge into `main`, the [Release workflow](../.github/workflows/release.yml)
    opens or updates the **"chore: release"** PR (version bump + `CHANGELOG.md`).
-3. Merging that PR publishes to npm (with provenance), pushes the tag
-   `@leptoquark1/openage-pfadfinder@<version>` and creates a GitHub Release. `prepublishOnly` runs `pnpm check`
-   first.
+3. Merging that PR publishes the bumped packages to npm (with provenance), pushes a tag
+   `<package>@<version>` per package (e.g. `@leptoquark1/openage-pfadfinder@<version>`) and creates a GitHub Release
+   for each. `prepublishOnly` runs `pnpm check` first.
+
+The crowd plugin has the library as a peer dependency (`^2.0.0`). A major
+version of the library makes Changesets bump the plugin's major version too;
+widen the peer range in the same PR.
 
 Requires the repo secret **`NPM_TOKEN`** (npm token with publish rights for
 `@leptoquark1`).
@@ -56,7 +62,7 @@ Manual fallback (no provenance, no GitHub Release):
 | Symptom | Fix |
 | --- | --- |
 | "Some packages have been changed but no changesets were found" | Add a changeset (or an empty one) |
-| "Changeset added or modified, but no files under packages/pfadfinder/src/ or packages/pfadfinder/package.json changed" | Remove the changeset file |
+| "Changeset added or modified, but no files under packages/{pfadfinder,crowd}/src/ or packages/{pfadfinder,crowd}/package.json changed" | Remove the changeset file |
 | Release PR open, but not ready to ship | Don't merge it; new changesets update it automatically |
 | Cancel a release | Close the release PR and delete `changeset-release/main` |
 | Wrong version published | Publish a corrected version (npm unpublish is effectively impossible) |

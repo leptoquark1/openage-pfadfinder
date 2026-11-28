@@ -938,7 +938,7 @@ Tests are organized by topic:
 
 ## 13. The crowd plugin
 
-`packages/crowd` (`@leptoquark1/openage-pfadfinder-crowd`) moves crowds along the routes of this library; the demo's
+`packages/crowd` (`@leptoquark1/openage-pfadfinder-crowd`, published separately) moves crowds along the routes of this library; the demo's
 mobs use it (section 10). It depends on the public API only (peer dependency) and changes nothing in the core. Details, defaults
 and sources are in its [README](../packages/crowd/README.md).
 
