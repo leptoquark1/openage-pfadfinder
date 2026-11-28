@@ -203,6 +203,17 @@ function search(
 
   const openSet = new IntrusiveHeap<PortalSearchNode>();
 
+  // Portal centers in global coordinates and their distance costs, computed
+  // from numbers: PortalNode.localToGlobal() and heuristicCost() would make
+  // two objects per edge. Same formulas: sectors row-major, round(euclidean × 10).
+  const gridWidth = grid.getSize().width;
+  const sectorSize = grid.getSectorSize();
+  const centerNe = (portal: Portal, sector: SectorId): number =>
+    (sector % gridWidth) * sectorSize + portal.getEntryCenterNe(sector);
+  const centerSe = (portal: Portal, sector: SectorId): number =>
+    Math.floor(sector / gridWidth) * sectorSize + portal.getEntryCenterSe(sector);
+  const cost = (dNe: number, dSe: number): number => Math.round(Math.sqrt(dNe * dNe + dSe * dSe) * 10);
+
   // Track closest node for partial-path fallback
   let closestNode: PortalSearchNode | undefined;
 
@@ -215,11 +226,11 @@ function search(
 
     // After crossing the start portal, we arrive in the exit sector
     const entrySector = startPortal.getExitSector(startSectorId);
-    const center = startPortal.getEntryCenter(entrySector);
-    const centerGlobal = PortalNode.localToGlobal(grid, entrySector, center.ne, center.se);
-    const h = PortalNode.heuristicCost(centerGlobal, targetPosGlobal);
+    const ne = centerNe(startPortal, entrySector);
+    const se = centerSe(startPortal, entrySector);
+    const h = cost(ne - targetPosGlobal.ne, se - targetPosGlobal.se);
     // the walk from the start to the portal, when the start is known
-    const g = startPosGlobal ? PortalNode.heuristicCost(startPosGlobal, centerGlobal) : 0;
+    const g = startPosGlobal ? cost(startPosGlobal.ne - ne, startPosGlobal.se - se) : 0;
 
     const sn: PortalSearchNode = {
       portalNode,
@@ -303,9 +314,10 @@ function search(
         continue;
       }
 
-      const exitCenter = exitPortal.getEntryCenter(current.entrySector);
-      const exitCenterGlobal = PortalNode.localToGlobal(grid, current.entrySector, exitCenter.ne, exitCenter.se);
-      const h = PortalNode.heuristicCost(exitCenterGlobal, targetPosGlobal);
+      const h = cost(
+        centerNe(exitPortal, current.entrySector) - targetPosGlobal.ne,
+        centerSe(exitPortal, current.entrySector) - targetPosGlobal.se,
+      );
       const futureCost = newCost + h;
 
       if (!existing) {

@@ -135,13 +135,17 @@ describe('Portal derived values', () => {
     expect(portal.getExitRangeKey(7)).toMatch(/^7:/);
   });
 
-  it('keeps the entry center of each side', () => {
+  it('derives the entry center of each side, as an object and as numbers', () => {
     const [left, right] = [portal.getSector0(), portal.getSector1()];
     const middle = Math.floor((SECTOR - 1) / 2);
 
     expect(portal.getEntryCenter(left)).toEqual({ ne: SECTOR - 1, se: middle });
     expect(portal.getEntryCenter(right)).toEqual({ ne: 0, se: middle });
-    expect(portal.getEntryCenter(left)).toBe(portal.getEntryCenter(left));
-    expect(portal.getEntryCenter(right)).toBe(portal.getEntryCenter(right));
+    for (const side of [left, right, 7]) {
+      const center = portal.getEntryCenter(side);
+      expect([portal.getEntryCenterNe(side), portal.getEntryCenterSe(side)]).toEqual([center.ne, center.se]);
+    }
+    // a new object per call, so no caller can change another's
+    expect(portal.getEntryCenter(left)).not.toBe(portal.getEntryCenter(left));
   });
 });

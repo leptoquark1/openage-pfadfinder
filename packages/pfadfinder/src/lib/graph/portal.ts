@@ -48,6 +48,10 @@ const NO_EXITS: ExitTable = { portals: [], costs: new Uint8Array(0) };
  * Bidirectional gateway connecting two adjacent sectors.
  * Stores entry/exit cell ranges for both sides.
  *
+ * The cell range is kept as four numbers, not as objects: a grid holds
+ * thousands of portals. The getters derive each side's coordinates from them
+ * and return a new object on every call.
+ *
  * Port of openage's Portal class.
  */
 export class Portal {
@@ -55,16 +59,17 @@ export class Portal {
   private readonly sector0: SectorId;
   private readonly sector1: SectorId;
   private readonly direction: PortalDirection;
-  private readonly cellStart: TileDelta;
-  private readonly cellEnd: TileDelta;
+  /** The cell range in sector0's local frame (`cellStart`/`cellEnd` of the constructor). */
+  private readonly startNe: number;
+  private readonly startSe: number;
+  private readonly endNe: number;
+  private readonly endSe: number;
   /** The exit table of each side and this portal's row in it (see `ExitTable`). */
   private exits0: ExitTable = NO_EXITS;
   private exits1: ExitTable = NO_EXITS;
   private row0 = -1;
   private row1 = -1;
   /** Derived from the immutable cell range on first use, per sector side. */
-  private entryCenter0: TileDelta | undefined;
-  private entryCenter1: TileDelta | undefined;
   private rangeKey0: CacheKey | undefined;
   private rangeKey1: CacheKey | undefined;
 
@@ -80,8 +85,10 @@ export class Portal {
     this.sector0 = sector0;
     this.sector1 = sector1;
     this.direction = direction;
-    this.cellStart = cellStart;
-    this.cellEnd = cellEnd;
+    this.startNe = cellStart.ne;
+    this.startSe = cellStart.se;
+    this.endNe = cellEnd.ne;
+    this.endSe = cellEnd.se;
   }
 
   getId(): PortalId {
@@ -205,7 +212,15 @@ export class Portal {
    * portal's identity across incremental rebuilds.
    */
   matches(other: Portal): boolean {
-    return this.spans(other.sector0, other.sector1, other.direction, other.cellStart, other.cellEnd);
+    return (
+      this.direction === other.direction &&
+      this.sector0 === other.sector0 &&
+      this.sector1 === other.sector1 &&
+      this.startNe === other.startNe &&
+      this.startSe === other.startSe &&
+      this.endNe === other.endNe &&
+      this.endSe === other.endSe
+    );
   }
 
   /**
@@ -224,88 +239,99 @@ export class Portal {
       this.direction === direction &&
       this.sector0 === sector0 &&
       this.sector1 === sector1 &&
-      this.cellStart.ne === cellStart.ne &&
-      this.cellStart.se === cellStart.se &&
-      this.cellEnd.ne === cellEnd.ne &&
-      this.cellEnd.se === cellEnd.se
+      this.startNe === cellStart.ne &&
+      this.startSe === cellStart.se &&
+      this.endNe === cellEnd.ne &&
+      this.endSe === cellEnd.se
     );
+  }
+
+  // Coordinates on the side of `sectorId`. sector0's side is the stored
+  // range; sector1's side sits on row/column 0 of the connecting axis
+  // (also for a sector the portal does not connect, as before).
+
+  /** Whether the ne coordinate of the entry cells on that side is the stored one (else 0). */
+  private entryKeepsNe(sectorId: SectorId): boolean {
+    return sectorId === this.sector0 || this.direction === PortalDirection.NORTH_SOUTH;
+  }
+
+  /** Whether the se coordinate of the entry cells on that side is the stored one (else 0). */
+  private entryKeepsSe(sectorId: SectorId): boolean {
+    return sectorId === this.sector0 || this.direction !== PortalDirection.NORTH_SOUTH;
+  }
+
+  /** The exit cells of a side are the entry cells of the other side. */
+  private exitKeepsNe(sectorId: SectorId): boolean {
+    return sectorId !== this.sector0 || this.direction === PortalDirection.NORTH_SOUTH;
+  }
+
+  private exitKeepsSe(sectorId: SectorId): boolean {
+    return sectorId !== this.sector0 || this.direction !== PortalDirection.NORTH_SOUTH;
   }
 
   /**
    * Entry start coordinate (in the entry sector's local space).
    */
   getEntryStart(sectorId: SectorId): TileDelta {
-    if (sectorId === this.sector0) {
-      return this.cellStart;
-    }
-    // sector1 side sits on row/column 0 of the connecting axis
-    if (this.direction === PortalDirection.NORTH_SOUTH) {
-      return { ne: this.cellStart.ne, se: 0 };
-    }
-    return { ne: 0, se: this.cellStart.se };
+    return {
+      ne: this.entryKeepsNe(sectorId) ? this.startNe : 0,
+      se: this.entryKeepsSe(sectorId) ? this.startSe : 0,
+    };
   }
 
   /**
    * Entry center coordinate.
    */
   getEntryCenter(sectorId: SectorId): TileDelta {
-    const isSector0 = sectorId === this.sector0;
-    const known = isSector0 ? this.entryCenter0 : this.entryCenter1;
-    if (known) {
-      return known;
-    }
-    const start = this.getEntryStart(sectorId);
-    const end = this.getEntryEnd(sectorId);
-    const center = {
-      ne: Math.floor((start.ne + end.ne) / 2),
-      se: Math.floor((start.se + end.se) / 2),
-    };
-    if (isSector0) {
-      this.entryCenter0 = center;
-    } else {
-      this.entryCenter1 = center;
-    }
-    return center;
+    return { ne: this.getEntryCenterNe(sectorId), se: this.getEntryCenterSe(sectorId) };
+  }
+
+  /**
+   * The ne coordinate of `getEntryCenter()`, without an object.
+   *
+   * @internal
+   */
+  getEntryCenterNe(sectorId: SectorId): number {
+    return this.entryKeepsNe(sectorId) ? Math.floor((this.startNe + this.endNe) / 2) : 0;
+  }
+
+  /**
+   * The se coordinate of `getEntryCenter()`, without an object.
+   *
+   * @internal
+   */
+  getEntryCenterSe(sectorId: SectorId): number {
+    return this.entryKeepsSe(sectorId) ? Math.floor((this.startSe + this.endSe) / 2) : 0;
   }
 
   /**
    * Entry end coordinate.
    */
   getEntryEnd(sectorId: SectorId): TileDelta {
-    if (sectorId === this.sector0) {
-      return this.cellEnd;
-    }
-    if (this.direction === PortalDirection.NORTH_SOUTH) {
-      return { ne: this.cellEnd.ne, se: 0 };
-    }
-    return { ne: 0, se: this.cellEnd.se };
+    return {
+      ne: this.entryKeepsNe(sectorId) ? this.endNe : 0,
+      se: this.entryKeepsSe(sectorId) ? this.endSe : 0,
+    };
   }
 
   /**
    * Exit start coordinate (in the exit sector's local space).
    */
   getExitStart(sectorId: SectorId): TileDelta {
-    if (sectorId === this.sector0) {
-      // Exiting sector0 → entering sector1
-      if (this.direction === PortalDirection.NORTH_SOUTH) {
-        return { ne: this.cellStart.ne, se: 0 };
-      }
-      return { ne: 0, se: this.cellStart.se };
-    }
-    return this.cellStart;
+    return {
+      ne: this.exitKeepsNe(sectorId) ? this.startNe : 0,
+      se: this.exitKeepsSe(sectorId) ? this.startSe : 0,
+    };
   }
 
   /**
    * Exit end coordinate.
    */
   getExitEnd(sectorId: SectorId): TileDelta {
-    if (sectorId === this.sector0) {
-      if (this.direction === PortalDirection.NORTH_SOUTH) {
-        return { ne: this.cellEnd.ne, se: 0 };
-      }
-      return { ne: 0, se: this.cellEnd.se };
-    }
-    return this.cellEnd;
+    return {
+      ne: this.exitKeepsNe(sectorId) ? this.endNe : 0,
+      se: this.exitKeepsSe(sectorId) ? this.endSe : 0,
+    };
   }
 
   /**

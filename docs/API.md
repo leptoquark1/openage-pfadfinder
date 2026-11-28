@@ -217,6 +217,7 @@ A bidirectional gateway covering one full shared edge between two adjacent secto
 ```typescript
 new Portal(id, sector0, sector1, direction: PortalDirection, cellStart: TileDelta, cellEnd: TileDelta);
 // cellStart/cellEnd are the local coordinates of the covered edge cells (start → end along the portal's axis)
+// the portal copies them into four numbers; it keeps no TileDelta objects
 
 getId(), getDirection();
 getConnected(sectorId): Portal[];   // portals reachable inside that sector, in its portal order (a fresh array per call)
@@ -226,7 +227,8 @@ getExitSector(sectorId): SectorId;
 matches(other: Portal): boolean;    // same sectors, direction and cell range (id-independent comparison for rebuilds)
 spans(sector0, sector1, direction, cellStart, cellEnd): boolean;  // same check against a bare range, before a portal exists for it
 
-// entry/exit geometry in the local frame of `sectorId` (start → end along the portal's axis):
+// entry/exit geometry in the local frame of `sectorId` (start → end along the portal's axis),
+// derived from the stored range on every call, a new object each time:
 getEntryStart/getEntryCenter/getEntryEnd(sectorId): TileDelta  // where a route enters this sector through the portal
 getExitStart/getExitCenter/getExitEnd(sectorId): TileDelta     // where it leaves towards the other sector
 getExitRangeKey(sectorId): CacheKey  // key of the portal's cells in the sector entered from `sectorId`; same range, same key
