@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   Circle,
   Droplets,
+  Flag,
   Footprints,
   SignpostBig,
   Square,
@@ -55,7 +56,7 @@ const TERRAIN_ICONS: Record<TerrainId, LucideIcon> = {
   swamp: WavesHorizontal,
 };
 
-export type Mode = 'target' | 'mob' | 'obstacle' | 'movingObstacle' | 'patrolObstacle' | TerrainId;
+export type Mode = 'target' | 'start' | 'mob' | 'obstacle' | 'movingObstacle' | 'patrolObstacle' | TerrainId;
 export type ModeType = 'target' | 'spawn' | 'obstacle' | 'terrain';
 
 export interface ModeDescriptor {
@@ -69,6 +70,8 @@ export interface ModeDescriptor {
 
 export const MODES: ModeDescriptor[] = [
   { id: 'target', label: 'Target', icon: Target, type: 'target' },
+  // crowd scene only: the selected group's start
+  { id: 'start', label: 'Start', icon: Flag, type: 'target' },
   { id: 'mob', label: 'Mob', icon: Circle, type: 'spawn' },
   { id: 'obstacle', label: 'Wall', icon: Square, type: 'obstacle' },
   { id: 'movingObstacle', label: 'Moving', icon: SignpostBig, type: 'obstacle' },

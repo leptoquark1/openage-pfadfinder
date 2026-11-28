@@ -19,10 +19,13 @@ import {
   type World,
   type WorldStats,
 } from '../world/world.js';
+import { CrowdScene } from '../world/scene.js';
 import { terrainByCost } from '../world/terrain.js';
 import { Legend } from './Legend.js';
+import { CrowdPanel } from './CrowdPanel.js';
 import { PerfPanel } from './PerfPanel.js';
 import { RepoLink } from './RepoLink.js';
+import { ScenePanel } from './ScenePanel.js';
 import { StatusBadge } from './StatusBadge.js';
 import { TitleBar } from './TitleBar.js';
 
@@ -32,6 +35,7 @@ interface PathfinderCanvasProps {
   showFlow: boolean;
   showTraces: boolean;
   showPerf: boolean;
+  showCrowd: boolean;
   showLegend: boolean;
   /** Hint line for the status badge, derived from the latest stats. */
   status: string;
@@ -71,6 +75,7 @@ export function PathfinderCanvas({
   showFlow,
   showTraces,
   showPerf,
+  showCrowd,
   showLegend,
   status,
   onStats,
@@ -174,6 +179,11 @@ export function PathfinderCanvas({
         case 'target':
           if (world.setTargetAt(x, y)) {
             onTargetPlacedRef.current();
+          }
+          break;
+        case 'start':
+          if (world instanceof CrowdScene) {
+            world.setStartAt(x, y);
           }
           break;
         case 'mob':
@@ -292,8 +302,16 @@ export function PathfinderCanvas({
     <div ref={containerRef} className="relative min-w-0 flex-1">
       <canvas ref={canvasRef} className="block cursor-none touch-none" />
       <TitleBar />
-      <StatusBadge mode={mode} status={status} />
-      {showPerf && <PerfPanel world={world} />}
+      <StatusBadge
+        mode={mode}
+        status={status}
+        {...(world instanceof CrowdScene && mode === 'target' ? { modeLabel: 'Goal' } : {})}
+      />
+      {world instanceof CrowdScene && <ScenePanel scene={world} />}
+      {showPerf && (
+        <PerfPanel world={world} {...(world instanceof CrowdScene ? { position: 'bottom-16 left-3.5' } : {})} />
+      )}
+      {showCrowd && <CrowdPanel world={world} />}
       {showLegend && <Legend />}
       <RepoLink />
     </div>
@@ -330,6 +348,7 @@ function evaluatePreview(world: World, mode: Mode, x: number, y: number): Previe
 
   switch (mode) {
     case 'target':
+    case 'start':
       valid = world.canPlaceTarget(x, y);
       break;
     case 'mob':
@@ -380,6 +399,9 @@ function draw(
   drawWalls(ctx, world);
   drawObstacles(ctx, world);
   drawTarget(ctx, world);
+  if (world instanceof CrowdScene) {
+    drawGroups(ctx, world);
+  }
   if (showTraces) {
     drawPatrolRoutes(ctx, world);
     drawTraces(ctx, world);
@@ -566,7 +588,6 @@ function drawTarget(ctx: CanvasRenderingContext2D, world: World): void {
 
 /** The cells each mob will pass through, traced along its route. */
 function drawTraces(ctx: CanvasRenderingContext2D, world: World): void {
-  ctx.strokeStyle = COLORS.mob;
   ctx.globalAlpha = 0.35;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 4]);
@@ -575,6 +596,7 @@ function drawTraces(ctx: CanvasRenderingContext2D, world: World): void {
     if (mob.trace.length < 2) {
       continue;
     }
+    ctx.strokeStyle = mobColor(world, mob);
     ctx.beginPath();
     ctx.moveTo(mob.x, mob.y);
     for (let i = 1; i < mob.trace.length; i++) {
@@ -588,9 +610,57 @@ function drawTraces(ctx: CanvasRenderingContext2D, world: World): void {
   ctx.globalAlpha = 1;
 }
 
+/** The mob's group color in the crowd scene, the mob color elsewhere. */
+function mobColor(world: World, mob: Mob): string {
+  return world instanceof CrowdScene ? world.colorOf(mob.group) : COLORS.mob;
+}
+
+/**
+ * Starts and goals of the scene's groups in their colors: a dashed ring
+ * around the start, a target ring at the goal; the selected group's
+ * markers stronger, with a line from start to goal.
+ */
+function drawGroups(ctx: CanvasRenderingContext2D, scene: CrowdScene): void {
+  const selected = scene.getSelectedGroup();
+  const center = (c: Waypoint) => [c.ne * CELL_SIZE + CELL_SIZE / 2, c.se * CELL_SIZE + CELL_SIZE / 2] as const;
+  for (const group of scene.getGroups()) {
+    const active = group.id === selected;
+    const [sx, sy] = center(group.start);
+    const [gx, gy] = center(group.goal);
+    ctx.strokeStyle = group.color;
+    ctx.fillStyle = group.color;
+    ctx.globalAlpha = active ? 0.9 : 0.45;
+    ctx.lineWidth = active ? 2 : 1.5;
+
+    if (active) {
+      ctx.setLineDash([2, 6]);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(gx, gy);
+      ctx.stroke();
+    }
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.arc(sx, sy, CELL_SIZE * 0.8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath();
+    ctx.arc(gx, gy, 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(gx, gy, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = '10px ui-monospace, monospace';
+    ctx.fillText(group.name, sx + CELL_SIZE * 0.9, sy - CELL_SIZE * 0.6);
+  }
+  ctx.globalAlpha = 1;
+}
+
 function drawMobs(ctx: CanvasRenderingContext2D, world: World): void {
   for (const mob of world.getMobs()) {
-    ctx.fillStyle = COLORS.mob;
+    ctx.fillStyle = mobColor(world, mob);
     ctx.globalAlpha = mob.blocked ? 0.4 : 1;
     ctx.beginPath();
     ctx.arc(mob.x, mob.y, 6, 0, Math.PI * 2);
@@ -630,6 +700,7 @@ function drawPreview(ctx: CanvasRenderingContext2D, preview: Preview): void {
 
   switch (preview.mode) {
     case 'target':
+    case 'start':
       drawTargetPreview(ctx, preview.x, preview.y);
       break;
     case 'mob':

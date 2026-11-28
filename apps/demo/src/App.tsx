@@ -1,28 +1,33 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ConfirmDialog } from './components/ConfirmDialog.js';
 import { PathfinderCanvas } from './components/PathfinderCanvas.js';
-import { Toolbar } from './components/Toolbar.js';
+import { type Scene, Toolbar } from './components/Toolbar.js';
 import { WelcomeDialog } from './components/WelcomeDialog.js';
 import { isUnseen, markSeen, WELCOME_KEY } from './seen.js';
 import type { Mode } from './theme.js';
+import { CrowdScene } from './world/scene.js';
 import { World, type WorldStats } from './world/world.js';
 
 const EMPTY_STATS: WorldStats = { mobs: 0, obstacles: 0, blocked: 0, hasTarget: false };
 
 export function App() {
-  const world = useMemo(() => new World(), []);
+  // Two maps, each with its own world: switching keeps both as they are.
+  const sandbox = useMemo(() => new World(), []);
+  const crowds = useMemo(() => new CrowdScene(), []);
+  const [scene, setScene] = useState<Scene>('sandbox');
+  const world = scene === 'crowds' ? crowds : sandbox;
   const [mode, setMode] = useState<Mode>('target');
   // Last mode other than "target" — active again once a target has been placed.
   const lastDrawMode = useRef<Exclude<Mode, 'target'>>('obstacle');
   const [showFlow, setShowFlow] = useState(true);
   const [showTraces, setShowTraces] = useState(true);
   const [showPerf, setShowPerf] = useState(false);
+  const [showCrowd, setShowCrowd] = useState(false);
   const [showLegend, setShowLegend] = useState(true);
   const [mazeActive, setMazeActive] = useState(false);
   // Obstacles the labyrinth would remove, while its confirmation is open.
   const [mazeConfirm, setMazeConfirm] = useState<{ walls: number; moving: number } | null>(null);
   const [stats, setStats] = useState<WorldStats>(EMPTY_STATS);
-  const [crowd, setCrowd] = useState(() => world.getCrowdSettings());
   const [showWelcome, setShowWelcome] = useState(() => isUnseen(WELCOME_KEY));
 
   const handleWelcomeDone = useCallback(() => {
@@ -45,15 +50,36 @@ export function App() {
   );
 
   const handleTargetPlaced = useCallback(() => {
-    setMode(lastDrawMode.current);
-  }, []);
+    // the playground's single target is placed once; group goals are moved again and again
+    if (scene === 'sandbox') {
+      setMode(lastDrawMode.current);
+    }
+  }, [scene]);
+
+  const handleScene = useCallback(
+    (next: Scene) => {
+      world.cancelPatrolAnchor();
+      setScene(next);
+      setMazeActive((next === 'crowds' ? crowds : sandbox).hasLabyrinth());
+      setStats(EMPTY_STATS);
+      if (next === 'crowds' && mode === 'mob') {
+        setMode('start');
+      }
+      if (next === 'sandbox' && mode === 'start') {
+        setMode('target');
+      }
+    },
+    [world, crowds, sandbox, mode],
+  );
 
   const handleReset = useCallback(() => {
     world.reset();
     setMazeActive(false);
     setStats(EMPTY_STATS);
-    setMode('target');
-  }, [world]);
+    if (scene === 'sandbox') {
+      setMode('target');
+    }
+  }, [world, scene]);
 
   const generateLabyrinth = useCallback(() => {
     world.generateLabyrinth();
@@ -86,31 +112,17 @@ export function App() {
     setMazeConfirm(null);
   }, []);
 
-  const handleLanes = useCallback(
-    (lanes: boolean) => {
-      world.setCrowdSettings({ lanes });
-      setCrowd(world.getCrowdSettings());
-    },
-    [world],
-  );
-
-  const handleCongestion = useCallback(
-    (congestion: boolean) => {
-      world.setCrowdSettings({ congestion });
-      setCrowd(world.getCrowdSettings());
-    },
-    [world],
-  );
-
   const handleScatterWalls = useCallback(() => {
     world.scatterWallsAroundTarget();
   }, [world]);
 
-  const status = statusText(stats, mode);
+  const status = world instanceof CrowdScene ? world.statusText() : statusText(stats, mode);
 
   return (
     <div className="flex h-screen w-screen bg-bg font-sans text-fg">
       <Toolbar
+        scene={scene}
+        onScene={handleScene}
         mode={mode}
         onMode={handleMode}
         showFlow={showFlow}
@@ -125,10 +137,8 @@ export function App() {
         mazeActive={mazeActive}
         onToggleLabyrinth={handleToggleLabyrinth}
         onScatterWalls={handleScatterWalls}
-        lanes={crowd.lanes}
-        onLanes={handleLanes}
-        congestion={crowd.congestion}
-        onCongestion={handleCongestion}
+        showCrowd={showCrowd}
+        onShowCrowd={setShowCrowd}
         mobCount={stats.mobs}
         obstacleCount={stats.obstacles}
       />
@@ -138,6 +148,7 @@ export function App() {
         showFlow={showFlow}
         showTraces={showTraces}
         showPerf={showPerf}
+        showCrowd={showCrowd}
         showLegend={showLegend}
         status={status}
         onStats={setStats}

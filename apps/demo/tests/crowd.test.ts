@@ -1,6 +1,6 @@
 import { COST_MIN } from '@leptoquark1/openage-pfadfinder';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CROWD_SETTINGS, ObstacleRepulsion } from '../src/world/crowd.js';
+import { CROWD_SETTING_RANGES, DEFAULT_CROWD_SETTINGS, ObstacleRepulsion } from '../src/world/crowd.js';
 import { CELL_SIZE, MOB_RADIUS, World } from '../src/world/world.js';
 
 const px = (cell: number) => cell * CELL_SIZE + CELL_SIZE / 2;
@@ -54,27 +54,127 @@ describe('mobs as a crowd', () => {
     expect(gap).toBeGreaterThan(-MOB_RADIUS / 2);
   });
 
-  it('starts with lanes on and congestion off, and switches both', () => {
+  it('starts with the defaults and switches the side rule without losing the mobs', () => {
     const world = new World();
     world.resize(16, 16);
     expect(world.getCrowdSettings()).toEqual(DEFAULT_CROWD_SETTINGS);
     world.addMob(px(2), px(2));
     world.setTargetAt(px(12), px(12));
     world.step(0, 100);
-    world.setCrowdSettings({ lanes: false });
-    world.setCrowdSettings({ lanes: false }); // unchanged: nothing to do
-    expect(world.getCrowdSettings()).toEqual({ lanes: false, congestion: false });
-    // the mob keeps its position across the rebuilt crowd and walks on
+    run(world, 20, 200);
     const mob = world.getMobs()[0]!;
+    const agent = mob.agent;
+    world.setCrowdSettings({ side: 'left' }); // live: same crowd, same agent
+    expect(mob.agent).toBe(agent);
+    world.setCrowdSettings({ side: 'off' }); // the rule goes: a new crowd
+    expect(world.getCrowdSettings().side).toBe('off');
+    // the mob keeps its position across the rebuilt crowd and walks on
     const before = { x: mob.x, y: mob.y };
-    run(world, 60, 200);
+    run(world, 60, 600);
     expect(Math.hypot(mob.x - before.x, mob.y - before.y)).toBeGreaterThan(CELL_SIZE);
+  });
+
+  it('changes avoidance, look-ahead, personal space and replan interval live', () => {
+    const world = new World();
+    world.resize(16, 16);
+    world.addMob(px(2), px(2));
+    world.setTargetAt(px(12), px(12));
+    world.step(0, 100);
+    const agent = world.getMobs()[0]!.agent;
+    world.setCrowdSettings({ avoidance: 3, lookahead: 1.5, personalSpace: 0.5, replanInterval: 500 });
+    expect(world.getMobs()[0]!.agent).toBe(agent);
+    expect(world.getCrowdSettings()).toMatchObject({
+      avoidance: 3,
+      lookahead: 1.5,
+      personalSpace: 0.5,
+      replanInterval: 500,
+    });
+    // values outside the slider ranges are clamped
+    world.setCrowdSettings({ avoidance: 99, personalSpace: 0, replanInterval: 1 });
+    expect(world.getCrowdSettings()).toMatchObject({
+      avoidance: CROWD_SETTING_RANGES.avoidance.max,
+      personalSpace: CROWD_SETTING_RANGES.personalSpace.min,
+      replanInterval: CROWD_SETTING_RANGES.replanInterval.min,
+    });
+  });
+
+  it('runs the planning tick at the replan interval', () => {
+    const plansIn = (interval: number) => {
+      const world = new World();
+      world.resize(16, 16);
+      world.setCrowdSettings({ replanInterval: interval });
+      world.addMob(px(2), px(2));
+      world.setTargetAt(px(12), px(12));
+      for (let i = 0; i < 120; i++) {
+        world.step(16, i * 16.7); // two seconds
+      }
+      return (
+        world
+          .getPerf()
+          .snapshot()
+          .phases.find(([name]) => name === 'Traces')?.[1].callsPerSecond ?? 0
+      );
+    };
+    expect(plansIn(100)).toBeGreaterThan(plansIn(1000));
+  });
+
+  it('steers every mob along a path of its own in single path mode', () => {
+    const world = new World();
+    world.resize(32, 16);
+    world.setCrowdSettings({ guidance: 'path' });
+    for (let se = 0; se < 12; se++) {
+      world.paintWall(px(10), px(se));
+    }
+    world.setTargetAt(px(20), px(4));
+    world.addMob(px(2), px(4));
+    world.addMob(px(3), px(5));
+    run(world, 20);
+    for (let i = 0; i < 4; i++) {
+      world.step(0, 1000 + i * 200);
+    }
+    const [a, b] = world.getMobs();
+    // no flow fields in use: no routes, no overlay; the traces are the paths
+    expect(a!.route).toBeNull();
+    expect(world.getActiveRoutes()).toHaveLength(0);
+    expect(world.getFlowOverlay().size).toBe(0);
+    expect(a!.trace.at(-1)).toEqual({ ne: 20, se: 4 });
+    expect(b!.trace.at(-1)).toEqual({ ne: 20, se: 4 });
+    expect(a!.trace.some(c => c.se >= 12)).toBe(true); // around the wall's end
+    expect(a!.blocked).toBe(false);
+    // and they get there
+    let arrived = false;
+    for (let i = 0; i < 2000 && !arrived; i++) {
+      world.step(16, 2000 + i * 16);
+      arrived = a!.x === a!.spawnX && a!.y === a!.spawnY;
+    }
+    expect(arrived).toBe(true);
+    // back to flow fields
+    world.setCrowdSettings({ guidance: 'flow' });
+    for (let i = 0; i < 3; i++) {
+      world.step(16, 40_000 + i * 200);
+    }
+    expect(world.getActiveRoutes().length).toBeGreaterThan(0);
+  });
+
+  it('reports a mob without a path as blocked in single path mode', () => {
+    const world = new World();
+    world.resize(16, 16);
+    world.setCrowdSettings({ guidance: 'path' });
+    for (let se = 0; se < 16; se++) {
+      world.paintWall(px(8), px(se));
+    }
+    world.setTargetAt(px(12), px(4));
+    world.addMob(px(2), px(4));
+    for (let i = 0; i < 4; i++) {
+      world.step(16, 100 + i * 200);
+    }
+    expect(world.getMobs()[0]!.blocked).toBe(true);
   });
 
   it('raises the costs under a jam with congestion on, and restores them when switched off', () => {
     const world = new World();
     world.resize(16, 16);
-    world.setCrowdSettings({ congestion: true });
+    world.setCrowdSettings({ congestion: true, congestionCost: 80 });
     // a crowd packed around a target cell it cannot all reach at once
     world.setTargetAt(px(8), px(8));
     for (let k = 0; k < 30; k++) {

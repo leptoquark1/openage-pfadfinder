@@ -855,9 +855,21 @@ through `CrowdSimulation.applyTerrain()`, so routes over changed sectors are rep
 toggle on, terrain and density surcharges stay apart. A grid built from scratch (first build, resize, reset) or changed
 crowd settings get a new crowd with every mob at its position.
 
+Next to the playground ("Sandbox") the demo has a crowd simulation scene ("Crowds", `CrowdScene` in
+`apps/demo/src/world/scene.ts`, a `World` with groups): groups of mobs with a start, a goal, a size, a speed (with
+spread) and a start delay walk to their goals and come to rest there. A run is started, paused and restarted from its
+panel, at 0.25× to 4× speed, and ends once every group arrived or every mob that has not arrived has been stuck for
+2 s. It opens with the "crossing" template: four groups of 30 ± 20 % mobs, each from a corner to the opposite one.
+Walls, terrain and moving obstacles are edited as in the playground; mobs come from the groups only. The Start and
+Goal tools move the selected group's start and goal. `World` offers the hooks for it: `goalFor()`, `onArrived()`, a time scale and pause.
+
 What stays in the demo is the world around the crowd: walls, labyrinths, terrain, moving obstacles (a `SteeringForce` of
 the demo keeps mobs off them between planning ticks, and the planning tick stamps them into the cost layer), the
-respawn of arrived mobs and the terrain slowdown (`setMaxSpeed()` by the cost of the mob's cell). A mob counts as
+respawn of arrived mobs and the terrain slowdown (`setMaxSpeed()` by the cost of the mob's cell). The crowd panel (toolbar
+"Tuning") sets the side rule (left, right, off), the steering (`FlowRouteGuidance` or `PathGuidance`), avoidance strength,
+look-ahead, personal space, the replan interval (the planning tick, and the path replan interval) and congestion costs;
+numbers change the running strategies through `configure()`, the switches build a new crowd that keeps positions and
+velocities. A mob counts as
 blocked when the library has no route for it. The traces and the flow overlay show the routes the agents follow
 (`FlowRouteGuidance.getRoute()`), so sectors no mob's route passes through show no arrows.
 

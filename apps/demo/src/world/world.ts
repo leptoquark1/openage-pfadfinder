@@ -11,13 +11,23 @@ import {
   type SectorId,
   type Waypoint,
 } from '@leptoquark1/openage-pfadfinder';
-import type { AgentId, CrowdSimulation, FlowRouteGuidance } from '@leptoquark1/openage-pfadfinder-crowd';
 import {
+  type AgentId,
+  type CrowdSimulation,
+  FlowRouteGuidance,
+  type PathGuidance,
+  type Vec2,
+} from '@leptoquark1/openage-pfadfinder-crowd';
+import {
+  applyCrowdSettings,
   CROWD_TIMESTEP,
+  type Crowd,
   type CrowdSettings,
+  clampCrowdSettings,
   createCrowd,
   DEFAULT_CROWD_SETTINGS,
   MAX_CROWD_STEPS,
+  needsNewCrowd,
   type ObstacleView,
 } from './crowd.js';
 import { PerfMeter } from './perf.js';
@@ -48,6 +58,8 @@ export interface Mob {
   blocked: boolean;
   /** The mob's agent in the crowd simulation; -1 until the crowd exists. */
   agent: AgentId;
+  /** Crowd group the mob belongs to (crowd scene); -1 in the playground. */
+  readonly group: number;
 }
 
 /** Endpoints of a patrol route, in canvas pixels. */
@@ -77,9 +89,6 @@ export interface WorldStats {
   readonly blocked: number;
   readonly hasTarget: boolean;
 }
-
-/** Milliseconds between planning ticks — grid rebuild plus route refresh. */
-const PLAN_INTERVAL_MS = 100;
 
 /** Mob traces refreshed per planning tick, so a large crowd spreads over ticks. */
 const TRACES_PER_TICK = 12;
@@ -154,8 +163,12 @@ export class World {
   private grid: Grid | null = null;
   private readonly pathfinder = new Pathfinder();
 
-  private target: Waypoint | null = null;
-  private readonly mobs: Mob[] = [];
+  protected target: Waypoint | null = null;
+  protected readonly mobs: Mob[] = [];
+  /** Simulated seconds per real second; scenes speed the crowd up or slow it down. */
+  protected timeScale = 1;
+  /** While paused, obstacles and mobs stand still; edits and planning go on. */
+  protected paused = false;
   private readonly obstacles: MovingObstacle[] = [];
 
   /** First endpoint of the patrol route being placed — pending until the second click. */
@@ -177,7 +190,9 @@ export class World {
   /** The mobs as a crowd on the current grid; rebuilt with the grid, null before the first build. */
   private crowd: CrowdSimulation | null = null;
   /** The crowd's guidance: it knows the route every agent follows. */
-  private guidance: FlowRouteGuidance | null = null;
+  private guidance: FlowRouteGuidance | PathGuidance | null = null;
+  /** The crowd's strategy instances, changed live by `setCrowdSettings()`. */
+  private crowdParts: Crowd | null = null;
   private crowdSettings: CrowdSettings = DEFAULT_CROWD_SETTINGS;
   /** World version the crowd last planned routes for. */
   private planVersion = -1;
@@ -284,23 +299,29 @@ export class World {
     return this.perf;
   }
 
-  /** How the crowd behaves (lanes, congestion). */
+  /** How the crowd behaves: side rule, guidance, avoidance, planning, congestion. */
   getCrowdSettings(): CrowdSettings {
     return this.crowdSettings;
   }
 
   /**
-   * Switch crowd behaviors. The crowd is rebuilt with the new strategies; the
-   * mobs keep their positions. Turning congestion off restores the costs.
+   * Change crowd settings; numbers are clamped into their slider ranges.
+   * Strengths, distances and intervals change the running strategies live.
+   * Turning the side rule on or off, another guidance or congestion on or
+   * off builds a new crowd; the mobs keep their positions and velocities.
+   * Turning congestion off restores the costs.
    */
   setCrowdSettings(settings: Partial<CrowdSettings>): void {
-    const next = { ...this.crowdSettings, ...settings };
-    if (next.lanes === this.crowdSettings.lanes && next.congestion === this.crowdSettings.congestion) {
+    const prev = this.crowdSettings;
+    const next = clampCrowdSettings({ ...prev, ...settings });
+    this.crowdSettings = next;
+    if (!this.grid || !this.crowdParts) {
       return;
     }
-    this.crowdSettings = next;
-    if (this.grid) {
+    if (needsNewCrowd(prev, next)) {
       this.rebuildCrowd();
+    } else {
+      applyCrowdSettings(this.crowdParts, next);
     }
   }
 
@@ -834,20 +855,39 @@ export class World {
     if (!this.canPlaceMob(px, py)) {
       return;
     }
+    this.spawnMob(px, py, MOB_SPEED_MIN + Math.random() * (MOB_SPEED_MAX - MOB_SPEED_MIN), -1);
+  }
+
+  /** Put a mob into the world and the crowd, without placement checks. */
+  protected spawnMob(px: number, py: number, speed: number, group: number): Mob {
     const mob: Mob = {
       x: px,
       y: py,
       spawnX: px,
       spawnY: py,
-      speed: MOB_SPEED_MIN + Math.random() * (MOB_SPEED_MAX - MOB_SPEED_MIN),
+      speed,
       trace: [],
       traceVersion: -1,
       route: null,
       blocked: false,
       agent: -1,
+      group,
     };
     this.mobs.push(mob);
     this.addAgent(mob);
+    return mob;
+  }
+
+  /** Take mobs out of the world and the crowd. */
+  protected dropMobs(drop: (mob: Mob) => boolean): void {
+    const keep = this.mobs.filter(m => !drop(m));
+    for (const mob of this.mobs) {
+      if (!keep.includes(mob) && mob.agent >= 0) {
+        this.crowd?.removeAgent(mob.agent);
+      }
+    }
+    this.mobs.length = 0;
+    this.mobs.push(...keep);
   }
 
   /** Paint a wall cell. Drag-painting calls this repeatedly. Only free cells are valid. */
@@ -1016,17 +1056,7 @@ export class World {
 
   /** Remove the mob covering the position, if any. */
   removeMob(px: number, py: number): void {
-    const next = this.mobs.filter(m => Math.hypot(m.x - px, m.y - py) > MOB_RADIUS);
-    if (next.length === this.mobs.length) {
-      return;
-    }
-    for (const mob of this.mobs) {
-      if (!next.includes(mob) && mob.agent >= 0) {
-        this.crowd?.removeAgent(mob.agent);
-      }
-    }
-    this.mobs.length = 0;
-    this.mobs.push(...next);
+    this.dropMobs(m => Math.hypot(m.x - px, m.y - py) <= MOB_RADIUS);
   }
 
   // --- Placement previews: the predicates behind the canvas cursor overlay. ---
@@ -1058,7 +1088,7 @@ export class World {
    * positions, not the cost layer — that is only re-stamped on the planning
    * tick, and steering must react between ticks.
    */
-  private cellBlocked(ne: number, se: number): boolean {
+  protected cellBlocked(ne: number, se: number): boolean {
     if (ne < 0 || se < 0 || ne >= this.cols || se >= this.rows) {
       return true;
     }
@@ -1196,7 +1226,7 @@ export class World {
    * route refresh run on the slower planning tick.
    */
   step(dtMs: number, nowMs: number): void {
-    const dt = Math.min(dtMs, 50) / 1000;
+    const dt = this.paused ? 0 : (Math.min(dtMs, 50) / 1000) * this.timeScale;
     this.elapsedMs += dtMs;
 
     this.perf.begin('Obstacles');
@@ -1277,7 +1307,7 @@ export class World {
     return sectors;
   }
 
-  private cellAt(px: number, py: number): Waypoint | null {
+  protected cellAt(px: number, py: number): Waypoint | null {
     const ne = Math.floor(px / CELL_SIZE);
     const se = Math.floor(py / CELL_SIZE);
     if (ne < 0 || se < 0 || ne >= this.cols || se >= this.rows) {
@@ -1416,7 +1446,7 @@ export class World {
   }
 
   private plan(nowMs: number): void {
-    if (nowMs - this.lastPlanMs < PLAN_INTERVAL_MS) {
+    if (nowMs - this.lastPlanMs < this.crowdSettings.replanInterval) {
       return;
     }
     this.lastPlanMs = nowMs;
@@ -1636,7 +1666,8 @@ export class World {
   private refreshRoutes(): void {
     const fields = new Set<FlowField>();
     for (const mob of this.mobs) {
-      const route = mob.agent >= 0 ? (this.guidance?.getRoute(mob.agent) ?? null) : null;
+      const guidance = this.guidance;
+      const route = mob.agent >= 0 && guidance instanceof FlowRouteGuidance ? guidance.getRoute(mob.agent) : null;
       if (route !== mob.route) {
         mob.route = route;
         mob.traceVersion = -1;
@@ -1669,7 +1700,7 @@ export class World {
   private traceMob(mob: Mob): void {
     mob.traceVersion = this.version;
 
-    const target = this.target;
+    const target = this.goalFor(mob);
     const start = this.cellAt(mob.x, mob.y);
     if (!target || !start) {
       mob.trace = [];
@@ -1678,6 +1709,14 @@ export class World {
     }
 
     const trace: Waypoint[] = [start];
+    const guidance = this.guidance;
+    if (guidance && !(guidance instanceof FlowRouteGuidance)) {
+      // one path per agent: the waypoints still ahead, the target last
+      const path = mob.agent >= 0 ? guidance.getPath(mob.agent) : null;
+      mob.trace = path ? [start, ...path] : trace;
+      mob.blocked = mob.agent >= 0 && this.crowd?.getState(mob.agent) === 'UNREACHABLE';
+      return;
+    }
     const route = mob.route;
     if (!route) {
       // no route yet (the guidance plans within a budget) or none at all
@@ -1709,7 +1748,7 @@ export class World {
   }
 
   /** Nearest cell a mob in a blocked cell can walk to, by breadth-first search. */
-  private nearestFreeCell(from: Waypoint): Waypoint | null {
+  protected nearestFreeCell(from: Waypoint): Waypoint | null {
     if (!this.cellBlocked(from.ne, from.se)) {
       return from;
     }
@@ -1753,7 +1792,8 @@ export class World {
     if (!crowd) {
       return;
     }
-    this.crowdAccumulator = Math.min(this.crowdAccumulator + dt, CROWD_TIMESTEP * MAX_CROWD_STEPS);
+    const maxSteps = MAX_CROWD_STEPS * Math.max(1, Math.ceil(this.timeScale));
+    this.crowdAccumulator = Math.min(this.crowdAccumulator + dt, CROWD_TIMESTEP * maxSteps);
     this.obstacleViews = this.obstacles.map(o => ({
       x: o.x / CELL_SIZE,
       y: o.y / CELL_SIZE,
@@ -1768,7 +1808,7 @@ export class World {
       crowd.step();
       for (const mob of this.mobs) {
         if (crowd.getState(mob.agent) === 'ARRIVED') {
-          this.respawn(mob);
+          this.onArrived(mob);
         }
       }
     }
@@ -1789,6 +1829,26 @@ export class World {
     return (mob.speed * terrainSpeedFactor(cost)) / CELL_SIZE;
   }
 
+  /** An arrived mob: in the playground it goes back to its spawn for another run. */
+  protected onArrived(mob: Mob): void {
+    this.respawn(mob);
+  }
+
+  /** The cell a mob is heading for, null to stand still: the target in the playground. */
+  protected goalFor(_mob: Mob): Waypoint | null {
+    return this.target;
+  }
+
+  /** Goals changed outside `setTargetAt()`: plan and trace again on the next planning tick. */
+  protected goalsChanged(): void {
+    this.markDirty();
+  }
+
+  /** Crowd state of a mob's agent, null before the crowd exists. */
+  protected agentState(mob: Mob): string | null {
+    return this.crowd && mob.agent >= 0 ? this.crowd.getState(mob.agent) : null;
+  }
+
   /** Back to the spawn for another run; the crowd moves it out of anything painted there since. */
   private respawn(mob: Mob): void {
     const crowd = this.crowd!;
@@ -1801,14 +1861,15 @@ export class World {
     mob.traceVersion = -1;
   }
 
-  /** Give the mob's agent the current target as goal, or none. */
-  private sendToTarget(mob: Mob): void {
+  /** Give the mob's agent its goal (`goalFor`), or none. */
+  protected sendToTarget(mob: Mob): void {
     if (mob.agent >= 0) {
-      this.crowd?.setGoal(mob.agent, this.target ? { ne: this.target.ne, se: this.target.se } : null);
+      const goal = this.goalFor(mob);
+      this.crowd?.setGoal(mob.agent, goal ? { ne: goal.ne, se: goal.se } : null);
     }
   }
 
-  private addAgent(mob: Mob): void {
+  private addAgent(mob: Mob, velocity?: Vec2): void {
     if (!this.crowd) {
       mob.agent = -1;
       return;
@@ -1817,6 +1878,8 @@ export class World {
       position: { x: mob.x / CELL_SIZE, y: mob.y / CELL_SIZE },
       radius: MOB_RADIUS / CELL_SIZE,
       maxSpeed: mob.speed / CELL_SIZE,
+      group: Math.max(0, mob.group),
+      ...(velocity ? { velocity } : {}),
     });
     this.sendToTarget(mob);
     this.planVersion = -1; // the new agent needs a route on the next planning tick
@@ -1828,21 +1891,29 @@ export class World {
    * do changed settings.
    */
   private rebuildCrowd(): void {
+    // velocities survive the rebuild, so switching a strategy does not stop the crowd
+    const velocities = new Map<Mob, Vec2>();
+    for (const mob of this.mobs) {
+      if (this.crowd && mob.agent >= 0) {
+        velocities.set(mob, this.crowd.getVelocity(mob.agent));
+      }
+    }
     this.disposeCrowd();
-    const { crowd, guidance } = createCrowd(
+    const parts = createCrowd(
       this.pathfinder,
       this.grid!.getId(),
       this.crowdSettings,
       () => this.obstacleViews,
       ARRIVAL_RADIUS / CELL_SIZE,
     );
-    this.crowd = crowd;
-    this.guidance = guidance;
+    this.crowdParts = parts;
+    this.crowd = parts.simulation;
+    this.guidance = parts.guidance;
     this.planVersion = -1;
     for (const mob of this.mobs) {
       mob.route = null;
       mob.traceVersion = -1;
-      this.addAgent(mob);
+      this.addAgent(mob, velocities.get(mob));
     }
   }
 
@@ -1851,6 +1922,7 @@ export class World {
     this.crowd?.dispose();
     this.crowd = null;
     this.guidance = null;
+    this.crowdParts = null;
     this.crowdAccumulator = 0;
     for (const mob of this.mobs) {
       mob.agent = -1;
