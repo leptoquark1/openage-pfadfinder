@@ -1,5 +1,6 @@
 import { type LucideIcon, MouseLeft, MouseRight } from 'lucide-react';
-import { COLORS } from '../theme.js';
+import { COLORS, TERRAIN_COLORS } from '../theme.js';
+import { TERRAINS } from '../world/terrain.js';
 
 const ACTIONS: { label: string; icon: LucideIcon }[] = [
   { icon: MouseLeft, label: 'Place Object' },
@@ -14,6 +15,8 @@ const ITEMS: { color: string; label: string; dashed?: boolean; collapse?: boolea
   { color: COLORS.obstacleMoving, label: 'Patrol Obstacle', dashed: true, collapse: true },
   { color: COLORS.flowStrong, label: 'Flow-Field' },
 ];
+
+const TERRAIN_ITEMS = TERRAINS.map(t => ({ color: TERRAIN_COLORS[t.id], label: t.label, cost: t.cost }));
 
 function LegendSectionTitle({ label }: { label: string }) {
   return (
@@ -55,6 +58,25 @@ export function Legend() {
               />
             )}
             <span className="font-mono">{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mb-3"></div>
+
+      <LegendSectionTitle label="Terrain (cost per cell)" />
+
+      <div className="flex flex-row gap-3.5 flex-wrap">
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="inline-block size-4 rounded-[3px] border border-border-strong" />
+          <span className="font-mono">Ground 1</span>
+        </div>
+        {TERRAIN_ITEMS.map(item => (
+          <div key={item.label} className="flex items-center justify-center gap-1.5">
+            <span className="inline-block size-4 rounded-[3px] opacity-60" style={{ background: item.color }} />
+            <span className="font-mono">
+              {item.label} {item.cost}
+            </span>
           </div>
         ))}
       </div>

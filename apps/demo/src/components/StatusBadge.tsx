@@ -15,6 +15,7 @@ export function StatusBadge({ mode, status }: StatusBadgeProps) {
     >
       <div>
         Mode: <span className="text-fg">{current?.label}</span>
+        {current?.cost !== undefined && <span> · cost {current.cost}</span>}
       </div>
       {status && <div className="mt-1 text-[11px] text-obstacle">{status}</div>}
     </div>

@@ -79,7 +79,7 @@ export function Toolbar({
       <ToolbarSectionTitle label="Objects" />
 
       <div role="radiogroup" aria-label="Mode">
-        {MODES.filter(m => m.type !== 'obstacle').map(m => (
+        {MODES.filter(m => m.type === 'target' || m.type === 'spawn').map(m => (
           <ToolbarButton key={m.id} active={mode === m.id} icon={m.icon} label={m.label} onClick={() => onMode(m.id)} />
         ))}
 
@@ -90,6 +90,20 @@ export function Toolbar({
         ))}
       </div>
       <ToolbarButton active={mazeActive} icon={Dices} label="Maze" onClick={onToggleLabyrinth} />
+
+      <ToolbarSectionTitle label="Terrain" mt={true} />
+
+      <div role="radiogroup" aria-label="Terrain">
+        {MODES.filter(m => m.type === 'terrain').map(m => (
+          <ToolbarButton
+            key={m.id}
+            active={mode === m.id}
+            icon={m.icon}
+            label={`${m.label} ${m.cost}`}
+            onClick={() => onMode(m.id)}
+          />
+        ))}
+      </div>
 
       <div className="flex-1" />
 
