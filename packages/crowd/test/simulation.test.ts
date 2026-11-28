@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FlowRouteGuidance } from '../src/guidance/flow-route.ts';
 import { CrowdSimulation } from '../src/simulation.ts';
 import { openWorld, runUntil, simulation, worldFromRows } from './helpers.ts';
 
@@ -187,6 +188,36 @@ describe('CrowdSimulation', () => {
     runUntil(sim, () => sim.getState(id) === 'ARRIVED', 400);
     expect(sim.getState(id)).toBe('ARRIVED');
     expect(sim.tick).toBeGreaterThan(0);
+  });
+
+  it('plans routes without moving anyone', () => {
+    const world = openWorld(16, 16);
+    world.grid.updateCosts(Array.from({ length: 16 }, (_, se) => ({ ne: 7, se, cost: 255 })));
+    const guidance = new FlowRouteGuidance(world.pathfinder, 0);
+    const sim = simulation(world, { guidance });
+    const free = sim.addAgent({ position: { x: 2.5, y: 2.5 }, radius: 0.4, maxSpeed: 2, goal: { ne: 5, se: 12 } });
+    const cut = sim.addAgent({ position: { x: 2.5, y: 8.5 }, radius: 0.4, maxSpeed: 2, goal: { ne: 12, se: 8 } });
+    const idle = sim.addAgent({ position: { x: 4.5, y: 4.5 }, radius: 0.4, maxSpeed: 2 });
+    sim.plan();
+    expect(guidance.getRoute(free)).not.toBeNull();
+    expect(sim.getState(cut)).toBe('UNREACHABLE');
+    expect(sim.getState(idle)).toBe('IDLE');
+    expect(sim.getPosition(free)).toEqual({ x: 2.5, y: 2.5 });
+    expect(sim.tick).toBe(0);
+    sim.applyTerrain([{ ne: 7, se: 8, cost: 1 }]);
+    sim.plan();
+    expect(sim.getState(cut)).toBe('MOVING');
+  });
+
+  it('changes the top speed of an agent', () => {
+    const sim = simulation(openWorld(32, 16), { preferredModifiers: [], forces: [] });
+    const id = sim.addAgent({ position: { x: 2.5, y: 8.5 }, radius: 0.4, maxSpeed: 2, goal: { ne: 30, se: 8 } });
+    sim.setMaxSpeed(id, 0.5);
+    for (let t = 0; t < 60; t++) {
+      sim.step();
+    }
+    expect(Math.hypot(sim.getVelocity(id).x, sim.getVelocity(id).y)).toBeCloseTo(0.5);
+    expect(() => sim.setMaxSpeed(id, -1)).toThrow(RangeError);
   });
 
   it('limits the acceleration', () => {

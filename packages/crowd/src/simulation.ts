@@ -241,6 +241,17 @@ export class CrowdSimulation {
     store.stateCode[i] = stateCode(AgentState.MOVING);
   }
 
+  /**
+   * Change an agent's top speed, e.g. by the terrain it stands on. Takes
+   * effect on the next tick.
+   */
+  setMaxSpeed(id: AgentId, maxSpeed: number): void {
+    if (!(maxSpeed >= 0) || !Number.isFinite(maxSpeed)) {
+      throw new RangeError(`maxSpeed must be a non-negative number, got ${maxSpeed}`);
+    }
+    this.store.speed[this.indexOf(id)] = maxSpeed;
+  }
+
   /** Move an agent instantly; like `addAgent`, out of walls. Keeps its velocity. */
   teleport(id: AgentId, position: Readonly<Vec2>): void {
     const i = this.indexOf(id);
@@ -317,6 +328,34 @@ export class CrowdSimulation {
       touched = ids;
     }
     this.guidance.invalidate(touched, Invalidation.UNSAFE);
+  }
+
+  /**
+   * Plan without moving: let the guidance find routes for every agent with
+   * a goal, e.g. right after goals or terrain changed, so routes are ready
+   * (to draw, or to report `UNREACHABLE`) before the next `step()`. Counts as
+   * a planning round of its own for the guidance's budget. Positions,
+   * velocities and the tick stay as they are.
+   */
+  plan(): void {
+    this.assertUsable();
+    const store = this.store;
+    store.compact();
+    this.ensureHash();
+    this.guidance.prepare(this.ctx);
+    const arrived = stateCode(AgentState.ARRIVED);
+    const unreachable = stateCode(AgentState.UNREACHABLE);
+    for (let i = 0; i < store.count; i++) {
+      if (!store.goalSet[i] || store.stateCode[i] === arrived) {
+        continue;
+      }
+      const status = this.guidance.preferredVelocity(this.ctx, i, this.pref);
+      if (status === GuidanceStatus.UNREACHABLE) {
+        store.stateCode[i] = unreachable;
+      } else if (store.stateCode[i] === unreachable) {
+        store.stateCode[i] = stateCode(AgentState.MOVING);
+      }
+    }
   }
 
   /** Advance the simulation by one `timestep`. */

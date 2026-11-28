@@ -52,8 +52,13 @@ describe('FlowRouteGuidance', () => {
   });
 
   it('plans separately for other groups', () => {
-    const { guidance } = twoGroups();
+    const { guidance, ids } = twoGroups();
     expect(guidance.getRouteCount()).toBe(2);
+    const a = guidance.getRoute(ids[0]!);
+    expect(a).not.toBeNull();
+    expect(a?.getTarget()).toEqual({ ne: 28, se: 28 });
+    expect(guidance.getRoute(ids[1]!)).not.toBe(a);
+    expect(guidance.getRoute(999)).toBeNull();
   });
 
   it('waits while the planning budget is used up', () => {

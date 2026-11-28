@@ -33,6 +33,8 @@ function frame(dtSeconds: number) {
 }
 ```
 
+More on the simulation: `plan()` plans routes without moving anyone (e.g. right after goals or terrain changed, to draw the routes before the next step), `setMaxSpeed()` changes an agent's top speed (e.g. by the terrain under it), `teleport()`, `removeAgent()`, `forEachNeighbor()`. `FlowRouteGuidance.getRoute(agent)` returns the route an agent follows, to draw it. The playground in [`apps/demo`](../../apps/demo/src/world/world.ts) is a complete consumer.
+
 Lengths are in **cells**, times in **seconds**. Cell `(ne, se)` covers `[ne, ne + 1) × [se, se + 1)`, so its center is `(ne + 0.5, se + 0.5)`; `x` runs along `ne`, `y` along `se`.
 
 ## How a tick works

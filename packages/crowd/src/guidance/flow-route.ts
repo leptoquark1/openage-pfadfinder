@@ -110,6 +110,15 @@ export class FlowRouteGuidance implements GuidanceProvider {
     return this.plans;
   }
 
+  /**
+   * The route an agent followed on its last tick, e.g. to draw it; null
+   * before its first plan, while it waits for one, or without a route.
+   * Read-only: the fields are the pathfinder's shared cache.
+   */
+  getRoute(agent: AgentId): FlowRoute | null {
+    return this.guides.get(agent)?.route?.route ?? null;
+  }
+
   /** Routes currently kept. */
   getRouteCount(): number {
     let n = 0;
