@@ -177,17 +177,17 @@ jobs:
         if: steps.changed.outputs.lib == 'true' || steps.changed.outputs.demo == 'true'
         run: pnpm build
 
-      - name: Typecheck library
+      - name: Typecheck packages
         if: steps.changed.outputs.lib == 'true'
-        run: pnpm --filter @leptoquark1/openage-pfadfinder typecheck
+        run: pnpm -r --filter './packages/*' typecheck
 
       - name: Typecheck demo
         if: steps.changed.outputs.demo == 'true'
         run: pnpm --filter @leptoquark1/openage-pfadfinder-demo typecheck
 
-      - name: Test library (with coverage thresholds)
+      - name: Test packages (with coverage thresholds)
         if: steps.changed.outputs.lib == 'true'
-        run: pnpm --filter @leptoquark1/openage-pfadfinder test:coverage
+        run: pnpm -r --filter './packages/*' test:coverage
 
       - name: Test demo
         if: steps.changed.outputs.demo == 'true'
