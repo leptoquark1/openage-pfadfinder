@@ -277,8 +277,8 @@ classDiagram
     class Portal {
         -sector0 SectorId
         -sector1 SectorId
-        -cellStart TileDelta
-        -cellEnd TileDelta
+        -startNe, startSe number
+        -endNe, endSe number
         +getEntryStart(sectorId)
         +getExitStart(sectorId)
         +getConnected(sectorId)
@@ -698,7 +698,7 @@ one built from scratch.
 | Areas              | `Sector`             | –                  | Cost field version changes | One per sector        |
 | Portal fields      | `FieldCache.cache`   | Portal cell range  | Cost field version changes | Number of portal ranges; optional LRU over all cost fields (`maxPortalFields`) |
 | Target fields      | `FieldCache.targets` | Cell index         | Cost field version changes | LRU, 4 per cost field; optional LRU over all cost fields (`maxTargetFields`) |
-| Portal center, key | `Portal`             | Portal side        | Immutable                  | Two per portal        |
+| Range key          | `Portal`             | Portal side        | Immutable                  | Two per portal        |
 | Exit distances     | Sector exit table    | Portal pair        | `connectExits()`           | k² per sector (k portals) |
 
 ```mermaid
@@ -779,7 +779,7 @@ The integrator offers four kinds of access:
 | **Cache-aside**          | `Integrator` checks `FieldCache`, computes on a miss | Expensive integration runs only once            |
 | **LRU**                  | `FieldCache.targets` and the integrator's optional bounds via `Map` insertion order | Bounded memory for cached fields |
 | **Weak references**      | `WeakMap` and `WeakRef` per `CostField`              | No manual cleanup of replaced grids             |
-| **Lazy initialization**  | `Sector.getAreas()`, portal centers and range keys   | Costs arise only when needed                    |
+| **Lazy initialization**  | `Sector.getAreas()`, portal range keys               | Costs arise only when needed                    |
 | **Intrusive data structure** | `HeapEntry.index`, `PortalNode.search`           | Position and state access without a lookup      |
 
 ### Consistency
