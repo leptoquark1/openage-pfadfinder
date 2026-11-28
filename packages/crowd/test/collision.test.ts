@@ -47,14 +47,26 @@ describe('walls', () => {
     expect(pos.x).toBeCloseTo(8.4);
   });
 
-  it('moves a center inside a wall to the nearest free cell', () => {
+  it('moves a center inside a wall to the nearest free point', () => {
     const pos = { x: 7.5, y: 3.5 };
     expect(pushOut(nav, pos)).toBe(true);
     expect(nav.isBlocked(Math.floor(pos.x), Math.floor(pos.y))).toBe(false);
-    expect(Math.hypot(pos.x - 7.5, pos.y - 3.5)).toBeCloseTo(1);
+    expect(Math.hypot(pos.x - 7.5, pos.y - 3.5)).toBeCloseTo(0.5, 2);
     const outside = { x: -3, y: 2.5 };
     resolveWalls(nav, outside, null, 0.4);
     expect(nav.isBlocked(Math.floor(outside.x), Math.floor(outside.y))).toBe(false);
+  });
+
+  it('pushes a center out on the side it is nearest to, not in search order', () => {
+    // wall cell (7, 3): just inside its west and north sides
+    const west = { x: 7.2, y: 3.5 };
+    pushOut(nav, west);
+    expect(west.x).toBeLessThan(7);
+    expect(west.y).toBeCloseTo(3.5);
+    const north = { x: 7.5, y: 3.1 };
+    pushOut(nav, north);
+    expect(north.y).toBeLessThan(3);
+    expect(north.x).toBeCloseTo(7.5);
   });
 
   it('gives up when no free cell is near', () => {
@@ -181,6 +193,24 @@ describe('OverlapResolver', () => {
       sim.addAgent({ position: { x, y: 1.5 }, radius: 0.3, maxSpeed: 1 });
     }
     sim.step();
+    expect(anyInWall(sim, 1e-3)).toBe(false);
+  });
+
+  it('does not push an agent through a wall one cell thick', () => {
+    // a wall across the whole room at ne = 5: no way around it
+    const world = worldFromRows(
+      ['################', '#....#.........#', '#....#.........#', '#....#.........#', '################'],
+      8,
+    );
+    const sim = simulation(world, { forces: [], preferredModifiers: [] });
+    // three neighbors on its west side push the front agent towards +ne,
+    // together by more than the distance to the wall
+    const front = sim.addAgent({ position: { x: 4.55, y: 2.5 }, radius: 0.45, maxSpeed: 1 });
+    for (const y of [2.45, 2.5, 2.55]) {
+      sim.addAgent({ position: { x: 4.2, y }, radius: 0.45, maxSpeed: 1 });
+    }
+    sim.step();
+    expect(sim.getPosition(front).x).toBeLessThan(5);
     expect(anyInWall(sim, 1e-3)).toBe(false);
   });
 

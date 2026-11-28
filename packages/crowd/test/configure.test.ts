@@ -65,6 +65,31 @@ describe('configure()', () => {
   });
 });
 
+describe('configure() with an invalid option', () => {
+  it('changes nothing at all', () => {
+    const law = new PowerLawAvoidance();
+    expect(() => law.configure({ strength: 2, tau0: 0 })).toThrow(RangeError);
+    expect(law.options.strength).toBe(1.5);
+    const sep = new Separation();
+    expect(() => sep.configure({ strength: 1, range: 0 })).toThrow(RangeError);
+    expect(sep.options.strength).toBe(8);
+    const side = new SideRule();
+    expect(() => side.configure({ side: 'left', horizon: 0 })).toThrow(RangeError);
+    expect(side.options.side).toBe('right');
+    const cost = new DensityCostModel();
+    expect(() => cost.configure({ costPerDensity: 10, commitInterval: 0 })).toThrow(RangeError);
+    expect(cost.options.costPerDensity).toBe(40);
+  });
+
+  it('rejects NaN for the congestion thresholds and steps', () => {
+    const cost = new DensityCostModel();
+    for (const key of ['riseThreshold', 'fallThreshold', 'maxStep'] as const) {
+      expect(() => cost.configure({ [key]: Number.NaN })).toThrow(RangeError);
+    }
+    expect(cost.options.maxStep).toBe(15);
+  });
+});
+
 describe('initial velocity', () => {
   it('starts an agent with the given velocity and validates it', () => {
     const sim = simulation(openWorld(16, 16));

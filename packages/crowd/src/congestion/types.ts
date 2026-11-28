@@ -31,7 +31,8 @@ export interface CongestionModel {
   readonly field: DensityFieldView | undefined;
   /**
    * Apply terrain changes while the model holds surcharges on top of the
-   * base costs. Returns the sectors touched. Models without own cost state
+   * base costs. Returns the sectors whose cost fields changed (a change to
+   * the cost a cell already has is no change). Models without own cost state
    * may omit it; the simulation then calls `Grid.updateCosts()` directly.
    */
   applyTerrain?(changes: readonly CostChange[]): ReadonlySet<SectorId>;

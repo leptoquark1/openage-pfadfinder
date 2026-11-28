@@ -80,6 +80,11 @@ export class FlowRouteGuidance implements GuidanceProvider {
 
   private readonly routes = new Map<number, RouteRecord[]>();
   private readonly guides = new Map<AgentId, AgentGuide>();
+  /**
+   * Group → small dense number for the route keys: groups may be any safe
+   * integer, and `group · cells` would lose precision for large ones.
+   */
+  private readonly groupSlots = new Map<number, number>();
   /** Per sector: version at which only costs changed (STALE). */
   private readonly staleAt = new Map<SectorId, number>();
   /** Per sector: version at the last UNSAFE invalidation. */
@@ -239,6 +244,7 @@ export class FlowRouteGuidance implements GuidanceProvider {
   dispose(): void {
     this.routes.clear();
     this.guides.clear();
+    this.groupSlots.clear();
     this.staleAt.clear();
     this.unsafeAt.clear();
   }
@@ -371,6 +377,11 @@ export class FlowRouteGuidance implements GuidanceProvider {
   }
 
   private keyOf(group: number, ne: number, se: number, width: number, height: number): number {
-    return (group * height + se) * width + ne;
+    let slot = this.groupSlots.get(group);
+    if (slot === undefined) {
+      slot = this.groupSlots.size;
+      this.groupSlots.set(group, slot);
+    }
+    return (slot * height + se) * width + ne;
   }
 }

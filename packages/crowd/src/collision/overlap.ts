@@ -3,7 +3,7 @@ import type { NavigationView } from '../context.js';
 import type { SpatialHash } from '../spatial-hash.js';
 import { fallbackDirection } from '../steering/fallback.js';
 import type { Vec2 } from '../vec2.js';
-import { resolveWalls } from './walls.js';
+import { moveWithWalls } from './walls.js';
 
 export interface OverlapResolverOptions {
   /** Solver passes per tick. Default 4. */
@@ -19,7 +19,7 @@ export interface OverlapResolverOptions {
  * Gauss–Seidel passes over the pairs in ascending (lower, higher) index, a
  * fixed order, so the result is deterministic. One pass is not enough in
  * a jam (fixing one pair can push into the next), hence several, each
- * followed by pushing the agents back out of the walls.
+ * followed by moving the agents' corrections against the walls.
  */
 export class OverlapResolver {
   private readonly iterations: number;
@@ -27,6 +27,8 @@ export class OverlapResolver {
   private readonly pos: Vec2 = { x: 0, y: 0 };
   private readonly vel: Vec2 = { x: 0, y: 0 };
   private readonly dir: Vec2 = { x: 0, y: 0 };
+  private prevX = new Float64Array(16);
+  private prevY = new Float64Array(16);
 
   constructor(options: OverlapResolverOptions = {}) {
     this.iterations = options.iterations ?? 4;
@@ -36,20 +38,33 @@ export class OverlapResolver {
   /** Run the passes; `hash` is rebuilt as needed. Returns the overlap left (sum of depths). */
   resolve(store: AgentStore, hash: SpatialHash, nav: NavigationView): number {
     let left = 0;
+    const n = store.count;
+    if (this.prevX.length < n) {
+      this.prevX = new Float64Array(Math.max(n, this.prevX.length * 2));
+      this.prevY = new Float64Array(this.prevX.length);
+    }
     for (let it = 0; it < this.iterations; it++) {
       hash.build(store);
+      this.prevX.set(store.px.subarray(0, n));
+      this.prevY.set(store.py.subarray(0, n));
       left = this.pass(store, hash);
-      for (let i = 0; i < store.count; i++) {
-        this.pos.x = store.px[i]!;
-        this.pos.y = store.py[i]!;
+      // the corrections move against the walls like any other move: summed
+      // over several neighbors they can exceed a cell's width, and resolving
+      // only the end position could put a body through a thin wall
+      for (let i = 0; i < n; i++) {
+        const x0 = this.prevX[i]!;
+        const y0 = this.prevY[i]!;
+        const dx = store.px[i]! - x0;
+        const dy = store.py[i]! - y0;
+        this.pos.x = x0;
+        this.pos.y = y0;
         this.vel.x = store.pvx[i]!;
         this.vel.y = store.pvy[i]!;
-        if (resolveWalls(nav, this.pos, this.vel, store.rad[i]!)) {
-          store.px[i] = this.pos.x;
-          store.py[i] = this.pos.y;
-          store.pvx[i] = this.vel.x;
-          store.pvy[i] = this.vel.y;
-        }
+        moveWithWalls(nav, this.pos, this.vel, store.rad[i]!, dx, dy);
+        store.px[i] = this.pos.x;
+        store.py[i] = this.pos.y;
+        store.pvx[i] = this.vel.x;
+        store.pvy[i] = this.vel.y;
       }
       if (left === 0) {
         break;

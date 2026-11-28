@@ -83,14 +83,20 @@ export class SideRule implements PreferredVelocityModifier {
     if (!(next.angle >= 0 && next.angle <= 90)) {
       throw new RangeError(`angle must be between 0 and 90 degrees, got ${next.angle}`);
     }
+    // validate everything first: an invalid option changes nothing
+    nonNegative('strength', next.strength);
+    positive('horizon', next.horizon);
+    positive('inflate', next.inflate);
+    nonNegative('lateral', next.lateral);
+    nonNegative('overtakeBelow', next.overtakeBelow);
     this.side = next.side === 'right' ? 1 : -1;
-    this.strength = nonNegative('strength', next.strength);
+    this.strength = next.strength;
     this.cosAngle = Math.cos((next.angle * Math.PI) / 180);
-    this.horizon = positive('horizon', next.horizon);
-    this.inflate = positive('inflate', next.inflate);
-    this.lateral = nonNegative('lateral', next.lateral);
+    this.horizon = next.horizon;
+    this.inflate = next.inflate;
+    this.lateral = next.lateral;
     this.overtake = next.overtake;
-    this.overtakeBelow = nonNegative('overtakeBelow', next.overtakeBelow);
+    this.overtakeBelow = next.overtakeBelow;
     this.current = next;
   }
 

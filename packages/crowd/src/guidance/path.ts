@@ -32,8 +32,10 @@ interface AgentPath {
   waypoints: Waypoint[];
   /** Waypoint the agent heads for. */
   index: number;
+  /** Sectors the planned path crosses, for STALE invalidations. */
+  sectors: Set<SectorId>;
   plannedTick: number;
-  /** A STALE invalidation came in after planning: replan within the budget. */
+  /** A STALE invalidation for a sector the path crosses came in after planning: replan within the budget. */
   stale: boolean;
   /** Tick of the failed plan, -1 when the goal is not known to be unreachable. */
   unreachableTick: number;
@@ -72,6 +74,14 @@ export class PathGuidance implements GuidanceProvider {
   private tick = 0;
   private dt = 1;
   private plans = 0;
+  /**
+   * Dense index from which agents get budgeted plans this tick. When the
+   * budget runs out it moves on past the last agent served, so a large
+   * crowd takes turns instead of the first agents taking every plan.
+   */
+  private cursor = 0;
+  /** Last agent (dense index) that got a budgeted plan this tick, -1 for none. */
+  private lastServed = -1;
 
   constructor(pathfinder: Pathfinder, gridId: GridId, options: PathGuidanceOptions = {}) {
     const grid = pathfinder.getGrid(gridId);
@@ -86,11 +96,28 @@ export class PathGuidance implements GuidanceProvider {
 
   /** Change options while the simulation runs; omitted ones keep their value. */
   configure(options: PathGuidanceOptions): void {
-    this.maxPlansPerTick = nonNegative('maxPlansPerTick', options.maxPlansPerTick ?? this.maxPlansPerTick);
-    this.replanInterval = nonNegative('replanInterval', options.replanInterval ?? this.replanInterval);
-    this.waypointRadius = positive('waypointRadius', options.waypointRadius ?? this.waypointRadius);
-    this.slowRadius = nonNegative('slowRadius', options.slowRadius ?? this.slowRadius);
-    this.retryInterval = nonNegative('retryInterval', options.retryInterval ?? this.retryInterval);
+    // validate everything first: an invalid option changes nothing
+    const maxPlansPerTick = nonNegative('maxPlansPerTick', options.maxPlansPerTick ?? this.maxPlansPerTick);
+    const replanInterval = nonNegative('replanInterval', options.replanInterval ?? this.replanInterval);
+    const waypointRadius = positive('waypointRadius', options.waypointRadius ?? this.waypointRadius);
+    const slowRadius = nonNegative('slowRadius', options.slowRadius ?? this.slowRadius);
+    const retryInterval = nonNegative('retryInterval', options.retryInterval ?? this.retryInterval);
+    this.maxPlansPerTick = maxPlansPerTick;
+    this.replanInterval = replanInterval;
+    this.waypointRadius = waypointRadius;
+    this.slowRadius = slowRadius;
+    this.retryInterval = retryInterval;
+  }
+
+  /** Current options. */
+  get options(): Required<PathGuidanceOptions> {
+    return {
+      maxPlansPerTick: this.maxPlansPerTick,
+      replanInterval: this.replanInterval,
+      waypointRadius: this.waypointRadius,
+      slowRadius: this.slowRadius,
+      retryInterval: this.retryInterval,
+    };
   }
 
   /** Paths planned so far (for tests and statistics). */
@@ -110,6 +137,12 @@ export class PathGuidance implements GuidanceProvider {
   prepare(ctx: CrowdContext): void {
     this.tick = ctx.tick;
     this.dt = ctx.dt;
+    // budget used up last tick: the agents after the last one served go first
+    this.cursor = this.budget <= 0 && this.lastServed >= 0 ? this.lastServed + 1 : 0;
+    if (this.cursor >= ctx.agents.count) {
+      this.cursor = 0;
+    }
+    this.lastServed = -1;
     this.budget = this.maxPlansPerTick;
     this.urgentBudget = Math.max(8, this.maxPlansPerTick * 4);
   }
@@ -129,6 +162,7 @@ export class PathGuidance implements GuidanceProvider {
         goalSe,
         waypoints: [],
         index: 0,
+        sectors: new Set(),
         plannedTick: -1,
         stale: false,
         unreachableTick: -1,
@@ -168,11 +202,12 @@ export class PathGuidance implements GuidanceProvider {
       (path.stale || (this.replanInterval > 0 && (this.tick - path.plannedTick) * this.dt >= this.replanInterval));
     if (!has || blocked || due) {
       const urgent = blocked && this.urgentBudget > 0;
-      if (urgent || this.budget > 0) {
+      if (urgent || (this.budget > 0 && i >= this.cursor)) {
         if (urgent) {
           this.urgentBudget--;
         } else {
           this.budget--;
+          this.lastServed = i;
         }
         if (!this.plan(path, ne, se)) {
           return GuidanceStatus.UNREACHABLE;
@@ -204,7 +239,9 @@ export class PathGuidance implements GuidanceProvider {
     this.epoch++;
     if (level === Invalidation.STALE) {
       for (const path of this.paths.values()) {
-        path.stale = true;
+        if (!path.stale && crosses(path.sectors, sectors)) {
+          path.stale = true;
+        }
       }
     }
   }
@@ -230,14 +267,36 @@ export class PathGuidance implements GuidanceProvider {
     if (result.result !== PathResult.FOUND || result.waypoints.length === 0) {
       path.waypoints = [];
       path.index = 0;
+      path.sectors.clear();
       path.unreachableTick = this.tick;
       path.unreachableEpoch = this.epoch;
       return false;
     }
     path.waypoints = result.waypoints;
     path.index = Math.min(1, result.waypoints.length - 1); // the first waypoint is the start cell
+    this.collectSectors(path);
     path.unreachableTick = -1;
     return true;
+  }
+
+  /** The sectors along the path's segments, sampled at least once per cell. */
+  private collectSectors(path: AgentPath): void {
+    const sectors = path.sectors;
+    sectors.clear();
+    const wps = path.waypoints;
+    for (let w = 0; w < wps.length; w++) {
+      const to = wps[w]!;
+      const from = wps[w > 0 ? w - 1 : 0]!;
+      const steps = Math.max(1, Math.abs(to.ne - from.ne), Math.abs(to.se - from.se));
+      for (let k = 0; k <= steps; k++) {
+        const ne = Math.round(from.ne + ((to.ne - from.ne) * k) / steps);
+        const se = Math.round(from.se + ((to.se - from.se) * k) / steps);
+        const sector = this.grid.getSectorAt(ne, se);
+        if (sector) {
+          sectors.add(sector.getId());
+        }
+      }
+    }
   }
 
   private lineClear(ne: number, se: number, to: Waypoint): boolean {
@@ -268,4 +327,13 @@ export class PathGuidance implements GuidanceProvider {
     out.x = (dx / len) * speed;
     out.y = (dy / len) * speed;
   }
+}
+
+function crosses(path: ReadonlySet<SectorId>, changed: ReadonlySet<SectorId>): boolean {
+  for (const id of changed) {
+    if (path.has(id)) {
+      return true;
+    }
+  }
+  return false;
 }

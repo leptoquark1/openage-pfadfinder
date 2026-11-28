@@ -1,5 +1,5 @@
 import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PathGuidance } from '../src/guidance/path.ts';
 import { Invalidation } from '../src/guidance/types.ts';
 import { anyInWall, openWorld, runUntil, simulation, worldFromRows } from './helpers.ts';
@@ -128,5 +128,64 @@ describe('PathGuidance', () => {
     expect(sim.getState(id)).toBe('ARRIVED');
     guidance.dispose();
     expect(guidance.getPath(id)).toBeNull();
+  });
+
+  it('lets every agent take its turn when the budget is short', () => {
+    const world = openWorld(32, 32);
+    const guidance = new PathGuidance(world.pathfinder, 0, { maxPlansPerTick: 2, replanInterval: 0.1 });
+    const sim = simulation(world, { guidance });
+    for (let k = 0; k < 8; k++) {
+      // standing still, each in a cell of its own: the start cell names the agent
+      sim.addAgent({ position: { x: 2.5 + k, y: 2.5 }, radius: 0.4, maxSpeed: 0, goal: { ne: 28, se: 28 } });
+    }
+    for (let t = 0; t < 4; t++) {
+      sim.step(); // everybody gets a first path
+    }
+    expect(guidance.getPlanCount()).toBe(8);
+    const plansBy = new Map<number, number>();
+    const getPath = world.pathfinder.getPath.bind(world.pathfinder);
+    const spy = vi.spyOn(world.pathfinder, 'getPath').mockImplementation(request => {
+      plansBy.set(request.start.ne, (plansBy.get(request.start.ne) ?? 0) + 1);
+      return getPath(request);
+    });
+    // due every 2 ticks: 4 plans per 2 ticks for 8 agents, so the
+    // rotation must serve every agent, not the first four over and over
+    for (let t = 0; t < 16; t++) {
+      sim.step();
+    }
+    spy.mockRestore();
+    for (let k = 0; k < 8; k++) {
+      expect(plansBy.get(2 + k) ?? 0).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('marks only paths through the invalidated sectors as stale', () => {
+    const world = openWorld(32, 32); // sectors of 8: 4 × 4
+    const guidance = new PathGuidance(world.pathfinder, 0, { replanInterval: 0 });
+    const sim = simulation(world, { guidance });
+    sim.addAgent({ position: { x: 2.5, y: 2.5 }, radius: 0.4, maxSpeed: 0, goal: { ne: 28, se: 2 } });
+    sim.step();
+    expect(guidance.getPlanCount()).toBe(1);
+    const off = world.grid.getSectorAt(2, 28)!.getId(); // far from the path along the top row
+    guidance.invalidate(new Set([off]), Invalidation.STALE);
+    sim.step();
+    expect(guidance.getPlanCount()).toBe(1);
+    const on = world.grid.getSectorAt(14, 2)!.getId();
+    guidance.invalidate(new Set([on]), Invalidation.STALE);
+    sim.step();
+    expect(guidance.getPlanCount()).toBe(2);
+  });
+
+  it('reports its options', () => {
+    const world = openWorld(16, 16);
+    const guidance = new PathGuidance(world.pathfinder, 0, { maxPlansPerTick: 3 });
+    guidance.configure({ slowRadius: 2 });
+    expect(guidance.options).toEqual({
+      maxPlansPerTick: 3,
+      replanInterval: 2,
+      waypointRadius: 0.35,
+      slowRadius: 2,
+      retryInterval: 20,
+    });
   });
 });

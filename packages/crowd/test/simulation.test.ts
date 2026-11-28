@@ -19,6 +19,21 @@ describe('CrowdSimulation', () => {
     const id = sim.addAgent(ok);
     expect(() => sim.setGoal(id, { ne: 1.5, se: 2 })).toThrow(RangeError);
     expect(() => sim.getPosition(id + 1)).toThrow(RangeError);
+    for (const hashCellSize of [0, -1, Number.NaN, Infinity]) {
+      expect(() => simulation(world, { hashCellSize })).toThrow(RangeError);
+    }
+  });
+
+  it('changes nothing when an agent or a goal is rejected', () => {
+    const sim = simulation(openWorld(16, 16));
+    const ok = { position: { x: 1.5, y: 1.5 }, radius: 0.4, maxSpeed: 1 };
+    expect(() => sim.addAgent({ ...ok, goal: { ne: 2.5, se: 3 } })).toThrow(RangeError);
+    expect(sim.agentCount).toBe(0);
+    const id = sim.addAgent({ ...ok, goal: { ne: 8, se: 8 } });
+    expect(() => sim.setGoal(id, { ne: Number.NaN, se: 3 })).toThrow(RangeError);
+    expect(sim.getState(id)).toBe('MOVING'); // still on its way to (8, 8)
+    runUntil(sim, () => sim.getState(id) === 'ARRIVED', 400);
+    expect(sim.getState(id)).toBe('ARRIVED');
   });
 
   it('gives ids that are never reused and keeps getters as copies', () => {
@@ -242,5 +257,49 @@ describe('CrowdSimulation', () => {
     expect(() => sim.step()).toThrow();
     expect(() => sim.getPosition(id)).toThrow();
     expect(() => sim.addAgent({ position: { x: 2.5, y: 2.5 }, radius: 0.4, maxSpeed: 2 })).toThrow();
+  });
+
+  it('lets the neighbor callback change the crowd', () => {
+    const sim = simulation(openWorld(16, 16));
+    const ids = [0, 1, 2, 3].map(k => sim.addAgent({ position: { x: 4 + k * 0.9, y: 4 }, radius: 0.4, maxSpeed: 1 }));
+    const seen: [number, number][] = [];
+    sim.forEachNeighbor(ids[0]!, 5, (n, d) => {
+      seen.push([n, d]);
+      if (n === ids[1]) {
+        sim.removeAgent(ids[1]!);
+        sim.getPosition(ids[0]!); // compacts the store
+        sim.forEachNeighbor(ids[3]!, 5, () => {}); // reuses the neighbor buffer
+      }
+    });
+    expect(seen.map(([n]) => n)).toEqual([ids[1], ids[2], ids[3]]);
+    expect(seen[1]![1]).toBeCloseTo(1.8);
+    expect(seen[2]![1]).toBeCloseTo(2.7);
+  });
+
+  it('does not take a slow agent walking steadily for stuck', () => {
+    const sim = simulation(openWorld(32, 16));
+    // 0.1 cells/s: 0.2 cells in the 2 s stuck time, less than stuckDistance
+    const id = sim.addAgent({ position: { x: 2.5, y: 8.5 }, radius: 0.4, maxSpeed: 0.1, goal: { ne: 28, se: 8 } });
+    for (let t = 0; t < 200; t++) {
+      sim.step(); // 10 s
+      expect(sim.getState(id)).toBe('MOVING');
+    }
+    expect(sim.getPosition(id).x).toBeGreaterThan(3.3);
+  });
+
+  it('replans only for sectors whose terrain really changed', () => {
+    const world = openWorld(32, 32);
+    const guidance = new FlowRouteGuidance(world.pathfinder, 0);
+    const sim = simulation(world, { guidance });
+    sim.addAgent({ position: { x: 2.5, y: 2.5 }, radius: 0.4, maxSpeed: 2, goal: { ne: 28, se: 28 } });
+    sim.step();
+    const plans = guidance.getPlanCount();
+    const same = world.grid.getSectorAt(2, 2)!.getCostField().getCost(2, 2);
+    sim.applyTerrain([{ ne: 2, se: 2, cost: same }]); // no change
+    sim.step();
+    expect(guidance.getPlanCount()).toBe(plans);
+    sim.applyTerrain([{ ne: 2, se: 3, cost: same + 5 }]);
+    sim.step();
+    expect(guidance.getPlanCount()).toBe(plans + 1);
   });
 });

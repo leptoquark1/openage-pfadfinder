@@ -169,4 +169,30 @@ describe('FlowRouteGuidance', () => {
     expect(v.x).toBeCloseTo(v.y);
     expect(runUntil(sim, () => sim.getState(id) === 'ARRIVED', 40)).toBeLessThan(20);
   });
+
+  it('keeps routes of very large group numbers apart', () => {
+    const world = openWorld(32, 32);
+    const guidance = new FlowRouteGuidance(world.pathfinder, 0);
+    const sim = simulation(world, { guidance });
+    // group · cells would round both keys to the same number
+    const big = 2 ** 40;
+    const a = sim.addAgent({
+      position: { x: 2.5, y: 2.5 },
+      radius: 0.4,
+      maxSpeed: 2,
+      group: big,
+      goal: { ne: 28, se: 28 },
+    });
+    const b = sim.addAgent({
+      position: { x: 4.5, y: 2.5 },
+      radius: 0.4,
+      maxSpeed: 2,
+      group: big + 1,
+      goal: { ne: 28, se: 29 },
+    });
+    sim.step();
+    sim.step();
+    expect(guidance.getPlanCount()).toBe(2);
+    expect(guidance.getRoute(a)).not.toBe(guidance.getRoute(b));
+  });
 });

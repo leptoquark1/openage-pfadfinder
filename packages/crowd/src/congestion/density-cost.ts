@@ -91,15 +91,25 @@ export class DensityCostModel implements CongestionModel {
    * next commits, within the usual hysteresis and step limits.
    */
   configure(options: DensityCostOptions): void {
-    this.smoothingTime = nonNegative('smoothingTime', options.smoothingTime ?? this.smoothingTime);
-    this.freeDensity = nonNegative('freeDensity', options.freeDensity ?? this.freeDensity);
-    this.costPerDensity = nonNegative('costPerDensity', options.costPerDensity ?? this.costPerDensity);
-    this.maxSurcharge = Math.min(COST_MAX, nonNegative('maxSurcharge', options.maxSurcharge ?? this.maxSurcharge));
-    this.riseThreshold = Math.max(1, options.riseThreshold ?? this.riseThreshold);
-    this.fallThreshold = Math.max(1, options.fallThreshold ?? this.fallThreshold);
-    this.maxStep = Math.max(1, options.maxStep ?? this.maxStep);
-    this.commitIntervalSec = positive('commitInterval', options.commitInterval ?? this.commitIntervalSec);
-    this.dwellTimeSec = nonNegative('dwellTime', options.dwellTime ?? this.dwellTimeSec);
+    // validate everything first: an invalid option changes nothing
+    const smoothingTime = nonNegative('smoothingTime', options.smoothingTime ?? this.smoothingTime);
+    const freeDensity = nonNegative('freeDensity', options.freeDensity ?? this.freeDensity);
+    const costPerDensity = nonNegative('costPerDensity', options.costPerDensity ?? this.costPerDensity);
+    const maxSurcharge = Math.min(COST_MAX, nonNegative('maxSurcharge', options.maxSurcharge ?? this.maxSurcharge));
+    const riseThreshold = Math.max(1, nonNegative('riseThreshold', options.riseThreshold ?? this.riseThreshold));
+    const fallThreshold = Math.max(1, nonNegative('fallThreshold', options.fallThreshold ?? this.fallThreshold));
+    const maxStep = Math.max(1, nonNegative('maxStep', options.maxStep ?? this.maxStep));
+    const commitIntervalSec = positive('commitInterval', options.commitInterval ?? this.commitIntervalSec);
+    const dwellTimeSec = nonNegative('dwellTime', options.dwellTime ?? this.dwellTimeSec);
+    this.smoothingTime = smoothingTime;
+    this.freeDensity = freeDensity;
+    this.costPerDensity = costPerDensity;
+    this.maxSurcharge = maxSurcharge;
+    this.riseThreshold = riseThreshold;
+    this.fallThreshold = fallThreshold;
+    this.maxStep = maxStep;
+    this.commitIntervalSec = commitIntervalSec;
+    this.dwellTimeSec = dwellTimeSec;
     if (this.dt > 0) {
       this.applyTiming();
     }
@@ -218,16 +228,21 @@ export class DensityCostModel implements CongestionModel {
 
   applyTerrain(changes: readonly CostChange[]): ReadonlySet<SectorId> {
     const grid = this.grid!;
-    const touched = new Set<SectorId>();
+    /** Cost field version per touched sector before the update. */
+    const before = new Map<Sector, number>();
     const effective: CostChange[] = [];
     for (const change of changes) {
       const found = this.locate(change.ne, change.se);
       if (!found) {
         continue;
       }
-      const id = found.sector.getId();
-      touched.add(id);
-      const state = this.sectors.get(id);
+      const sector = found.sector;
+      const state = this.sectors.get(sector.getId());
+      if (!before.has(sector)) {
+        // a field someone else wrote since our last write counts as changed
+        const version = sector.getCostField().getVersion();
+        before.set(sector, state && state.written !== version ? -1 : version);
+      }
       if (!state) {
         effective.push(change);
         continue;
@@ -240,13 +255,18 @@ export class DensityCostModel implements CongestionModel {
       effective.push({ ne: change.ne, se: change.se, cost: compose(change.cost, state.surcharge[found.idx]!) });
     }
     grid.updateCosts(effective);
-    for (const id of touched) {
-      const state = this.sectors.get(id);
+    const changed = new Set<SectorId>();
+    for (const [sector, version] of before) {
+      const now = sector.getCostField().getVersion();
+      if (now !== version) {
+        changed.add(sector.getId());
+      }
+      const state = this.sectors.get(sector.getId());
       if (state) {
-        state.written = state.sector.getCostField().getVersion();
+        state.written = now;
       }
     }
-    return touched;
+    return changed;
   }
 
   dispose(): void {

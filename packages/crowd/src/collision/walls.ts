@@ -5,6 +5,8 @@ import type { Vec2 } from '../vec2.js';
 const PASSES = 3;
 /** Cells searched at most for a free cell when an agent's center is inside a wall. */
 const PUSH_OUT_LIMIT = 4096;
+/** A point pushed out of a wall lands this far inside the free cell (cells). */
+const PUSH_OUT_INSET = 1e-3;
 
 /**
  * Move a circle by (dx, dy) against the blocked cells, in sub-steps of at
@@ -50,7 +52,7 @@ export function moveWithWalls(
 /**
  * Push a circle out of every blocked cell it overlaps: against the cell's
  * AABB, so edges and corners are both handled. A center inside a blocked
- * cell (or outside the map) is first moved to the nearest free cell.
+ * cell (or outside the map) is first moved into the nearest free cell.
  * Returns true when it touched a wall.
  */
 export function resolveWalls(nav: NavigationView, pos: Vec2, vel: Vec2 | null, radius: number): boolean {
@@ -124,22 +126,45 @@ export function resolveWalls(nav: NavigationView, pos: Vec2, vel: Vec2 | null, r
 }
 
 /**
- * Move a point inside a blocked cell (or outside the map) to the center of
- * the nearest free cell, by breadth-first search in a fixed neighbor order.
- * Returns false (and leaves the point) when no free cell is near.
+ * Move a point inside a blocked cell (or outside the map) to the nearest
+ * point of a free cell, just inside its border: the free cells of the first
+ * breadth-first ring that has any, and of the ring after it (a diagonal
+ * cell can be nearer), are compared by their distance from the point. So
+ * a body pressed into a wall comes out on the side it came from, not on
+ * whichever side the search order reaches first. Ties go to the cell found
+ * first, in a fixed neighbor order. Returns false (and leaves the point)
+ * when no free cell is near.
  */
 export function pushOut(nav: NavigationView, pos: Vec2): boolean {
   const startNe = clamp(Math.floor(pos.x), 0, nav.width - 1);
   const startSe = clamp(Math.floor(pos.y), 0, nav.height - 1);
   const seen = new Set<number>([startNe + startSe * nav.width]);
-  const queue: number[] = [startNe, startSe];
-  for (let head = 0; head < queue.length && seen.size <= PUSH_OUT_LIMIT; head += 2) {
+  // (ne, se, depth) triples
+  const queue: number[] = [startNe, startSe, 0];
+  let bestNe = 0;
+  let bestSe = 0;
+  let bestD2 = Infinity;
+  let lastDepth = Infinity;
+  for (let head = 0; head < queue.length && seen.size <= PUSH_OUT_LIMIT; head += 3) {
     const ne = queue[head]!;
     const se = queue[head + 1]!;
+    const depth = queue[head + 2]!;
+    if (depth > lastDepth) {
+      break;
+    }
     if (!nav.isBlocked(ne, se)) {
-      pos.x = ne + 0.5;
-      pos.y = se + 0.5;
-      return true;
+      const dx = pos.x - clamp(pos.x, ne, ne + 1);
+      const dy = pos.y - clamp(pos.y, se, se + 1);
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestNe = ne;
+        bestSe = se;
+      }
+      if (lastDepth === Infinity) {
+        lastDepth = depth + 1;
+      }
+      continue;
     }
     for (const [dNe, dSe] of NEIGHBORS) {
       const n = ne + dNe;
@@ -150,11 +175,16 @@ export function pushOut(nav: NavigationView, pos: Vec2): boolean {
       const key = n + s * nav.width;
       if (!seen.has(key)) {
         seen.add(key);
-        queue.push(n, s);
+        queue.push(n, s, depth + 1);
       }
     }
   }
-  return false;
+  if (bestD2 === Infinity) {
+    return false;
+  }
+  pos.x = clamp(pos.x, bestNe + PUSH_OUT_INSET, bestNe + 1 - PUSH_OUT_INSET);
+  pos.y = clamp(pos.y, bestSe + PUSH_OUT_INSET, bestSe + 1 - PUSH_OUT_INSET);
+  return true;
 }
 
 const NEIGHBORS: readonly (readonly [number, number])[] = [

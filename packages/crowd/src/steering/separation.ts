@@ -30,8 +30,11 @@ export class Separation implements SteeringForce {
 
   /** Change options while the simulation runs; omitted ones keep their value. */
   configure(options: SeparationOptions): void {
-    this.range = positive('range', options.range ?? this.range);
-    this.strength = nonNegative('strength', options.strength ?? this.strength);
+    // validate everything first: an invalid option changes nothing
+    const range = positive('range', options.range ?? this.range);
+    const strength = nonNegative('strength', options.strength ?? this.strength);
+    this.range = range;
+    this.strength = strength;
   }
 
   /** Current options. */

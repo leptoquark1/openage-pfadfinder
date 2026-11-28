@@ -46,11 +46,17 @@ export class PowerLawAvoidance implements SteeringForce {
 
   /** Change options while the simulation runs; omitted ones keep their value. */
   configure(options: PowerLawOptions): void {
-    this.k = nonNegative('strength', options.strength ?? this.k);
-    this.tau0 = positive('tau0', options.tau0 ?? this.tau0);
-    this.horizon = nonNegative('horizon', options.horizon ?? this.horizon);
-    this.tauMin = positive('tauMin', options.tauMin ?? this.tauMin);
-    this.maxForce = nonNegative('maxForce', options.maxForce ?? this.maxForce);
+    // validate everything first: an invalid option changes nothing
+    const k = nonNegative('strength', options.strength ?? this.k);
+    const tau0 = positive('tau0', options.tau0 ?? this.tau0);
+    const horizon = nonNegative('horizon', options.horizon ?? this.horizon);
+    const tauMin = positive('tauMin', options.tauMin ?? this.tauMin);
+    const maxForce = nonNegative('maxForce', options.maxForce ?? this.maxForce);
+    this.k = k;
+    this.tau0 = tau0;
+    this.horizon = horizon;
+    this.tauMin = tauMin;
+    this.maxForce = maxForce;
   }
 
   /** Current options. */

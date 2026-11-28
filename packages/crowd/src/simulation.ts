@@ -1,4 +1,4 @@
-import type { Grid, GridId, Pathfinder, SectorId, TileDelta } from '@leptoquark1/openage-pfadfinder';
+import type { Grid, GridId, Pathfinder, Sector, SectorId, TileDelta } from '@leptoquark1/openage-pfadfinder';
 import { AgentStore, stateCode } from './agents.js';
 import { OverlapResolver } from './collision/overlap.js';
 import { moveWithWalls, resolveWalls } from './collision/walls.js';
@@ -13,6 +13,7 @@ import { Separation } from './steering/separation.js';
 import { SideRule } from './steering/side-rule.js';
 import type { PreferredVelocityModifier, SteeringForce } from './steering/types.js';
 import { type AgentId, type AgentParams, AgentState } from './types.js';
+import { positive } from './options.js';
 import type { Vec2 } from './vec2.js';
 
 export interface CrowdOptions {
@@ -47,7 +48,13 @@ export interface CrowdOptions {
    * cell. 0 turns it off. Default 0.2.
    */
   readonly arrivalChainGap?: number;
-  /** An agent counts as stuck when it moved less than this (cells) ... Default 0.5. */
+  /**
+   * An agent counts as stuck when it moved less than this (cells) ...
+   * Default 0.5. For slow agents the distance shrinks to a quarter of what
+   * they could cover at top speed in `stuckTime`, so walking slowly (e.g.
+   * through costly terrain) is not mistaken for being stuck; an agent with
+   * top speed 0 never counts as stuck.
+   */
   readonly stuckDistance?: number;
   /** ... within this time (seconds). Default 2. */
   readonly stuckTime?: number;
@@ -130,7 +137,7 @@ export class CrowdSimulation {
     this.stuckDistance = options.stuckDistance ?? 0.5;
     this.stuckTime = options.stuckTime ?? 2;
 
-    this.hashCellSize = options.hashCellSize ?? 2;
+    this.hashCellSize = positive('hashCellSize', options.hashCellSize ?? 2);
     this.hash = new SpatialHash(this.nav.width, this.nav.height, this.hashCellSize);
     this.congestion?.attach(grid, this.nav, this.timestep);
     this.ctx = {
@@ -195,6 +202,9 @@ export class CrowdSimulation {
     if (params.velocity) {
       assertFinite(params.velocity);
     }
+    if (params.goal) {
+      assertGoal(params.goal);
+    }
     this.pos.x = params.position.x;
     this.pos.y = params.position.y;
     resolveWalls(this.nav, this.pos, null, radius);
@@ -230,6 +240,9 @@ export class CrowdSimulation {
   /** Give an agent a goal cell, or none (`null` → `IDLE`). */
   setGoal(id: AgentId, goal: TileDelta | null): void {
     const i = this.indexOf(id);
+    if (goal) {
+      assertGoal(goal);
+    }
     const store = this.store;
     this.guidance.release(id);
     store.refX[i] = store.px[i]!;
@@ -239,9 +252,6 @@ export class CrowdSimulation {
       store.goalSet[i] = 0;
       store.stateCode[i] = stateCode(AgentState.IDLE);
       return;
-    }
-    if (!Number.isSafeInteger(goal.ne) || !Number.isSafeInteger(goal.se)) {
-      throw new RangeError(`goal must be integer cell coordinates, got (${goal.ne}, ${goal.se})`);
     }
     store.goalSet[i] = 1;
     store.goalX[i] = goal.ne;
@@ -306,18 +316,27 @@ export class CrowdSimulation {
     const store = this.store;
     const x = store.px[i]!;
     const y = store.py[i]!;
+    // snapshot first: the callback may change the crowd (compacting the
+    // store) or query neighbors itself (reusing the shared buffer)
+    const ids: AgentId[] = [];
+    const distances: number[] = [];
     for (const j of this.hash.within(x, y, radius, this.found)) {
       if (j !== i) {
-        cb(store.ids[j]!, Math.hypot(store.px[j]! - x, store.py[j]! - y));
+        ids.push(store.ids[j]!);
+        distances.push(Math.hypot(store.px[j]! - x, store.py[j]! - y));
       }
+    }
+    for (let k = 0; k < ids.length; k++) {
+      cb(ids[k]!, distances[k]!);
     }
   }
 
   /**
    * Change terrain costs, instead of `Grid.updateCosts()` while a congestion
    * model holds surcharges (it keeps base and surcharge apart). Routes
-   * through the touched sectors are replanned at once; agents now inside a
-   * wall are pushed out on the next tick.
+   * through sectors whose costs changed are replanned at once (changes to
+   * the cost a cell already has are ignored); agents now inside a wall are
+   * pushed out on the next tick.
    */
   applyTerrain(changes: readonly CostChange[]): void {
     this.assertUsable();
@@ -325,14 +344,22 @@ export class CrowdSimulation {
     if (this.congestion?.applyTerrain) {
       touched = this.congestion.applyTerrain(changes);
     } else {
-      const ids = new Set<SectorId>();
+      // cost field versions before the update: only sectors whose costs
+      // really changed invalidate routes
+      const before = new Map<Sector, number>();
       for (const { ne, se } of changes) {
-        const id = this.nav.sectorAt(ne, se);
-        if (id >= 0) {
-          ids.add(id);
+        const sector = this.nav.sectorObjectAt(ne, se);
+        if (sector && !before.has(sector)) {
+          before.set(sector, sector.getCostField().getVersion());
         }
       }
       this.grid.updateCosts(changes);
+      const ids = new Set<SectorId>();
+      for (const [sector, version] of before) {
+        if (sector.getCostField().getVersion() !== version) {
+          ids.add(sector.getId());
+        }
+      }
       touched = ids;
     }
     this.guidance.invalidate(touched, Invalidation.UNSAFE);
@@ -511,7 +538,8 @@ export class CrowdSimulation {
       }
       const mx = x - store.refX[i]!;
       const my = y - store.refY[i]!;
-      if (mx * mx + my * my >= this.stuckDistance * this.stuckDistance) {
+      const limit = Math.min(this.stuckDistance, STUCK_PROGRESS * store.speed[i]! * this.stuckTime);
+      if (mx * mx + my * my >= limit * limit) {
         store.refX[i] = x;
         store.refY[i] = y;
         store.stall[i] = 0;
@@ -607,6 +635,15 @@ function clamp(v: Vec2, max: number): void {
   if (len > max) {
     v.x *= max / len;
     v.y *= max / len;
+  }
+}
+
+/** Share of its possible distance an agent must cover within `stuckTime` to not count as stuck. */
+const STUCK_PROGRESS = 0.25;
+
+function assertGoal(goal: TileDelta): void {
+  if (!Number.isSafeInteger(goal.ne) || !Number.isSafeInteger(goal.se)) {
+    throw new RangeError(`goal must be integer cell coordinates, got (${goal.ne}, ${goal.se})`);
   }
 }
 
