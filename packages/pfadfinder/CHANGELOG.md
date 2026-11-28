@@ -1,5 +1,21 @@
 # @leptoquark1/openage-pfadfinder
 
+## 2.1.0
+
+### Minor Changes
+
+- 81347fc: Bound the field cache over all grids of a pathfinder: `new Pathfinder({ maxPortalFields, maxTargetFields })` (or `new Integrator({ … })`) keeps at most that many portal and target fields, dropping the least recently used first. Dropped fields are computed again identically, so routes do not change. Without options the cache behaves as before. `getCachedTargetFieldCount()` reports the cached target fields.
+  
+  `FieldCache.addTarget()` now returns the entry it dropped, and `FieldCache` gains `evictTarget()`, `targetCount`, `portalEntries()` and `targetEntries()`.
+- 3575f07: Keep portal exits in one cost table per sector instead of a list and a cost map per portal side. A grid of 240 × 240 cells with sector size 16 and 15 % walls now needs about 0.95 MB instead of 3.4 MB, cost updates are faster, and routes stay the same.
+  
+  `PortalNode.exits` is now built on every read from the sector tables; A* no longer uses it. `Portal.getConnected()` and `Portal.getExits()` return a new array on every call. `Portal.setExits()` is deprecated: it still works, but `Sector.connectExits()` sets the exits of a whole sector at once.
+- 58f6c6e: Add `Grid.renumberPortals()`: it gives every portal the id a fresh `buildGrid()` from the same costs would give it, and returns the changed ids. After `updateCosts()` portals and routes already match a fresh build, but ids depend on the update history; call it when the ids themselves must match, e.g. before hashing or saving state that holds portal ids. Portal nodes keep their identity under the new ids.
+
+### Patch Changes
+
+- 6a9afc5: Keep a portal's cell range as four numbers instead of `TileDelta` objects, and derive entry and exit coordinates on demand. Grids need about a quarter less memory (24 grids of 240 × 240 cells: 22.7 MB → 16.7 MB), and A* no longer allocates objects per edge for its heuristic. Routes stay the same. `Portal.getEntryStart()`, `getEntryEnd()`, `getEntryCenter()`, `getExitStart()` and `getExitEnd()` now return a new object on every call.
+
 ## 2.0.0
 
 ### Major Changes
