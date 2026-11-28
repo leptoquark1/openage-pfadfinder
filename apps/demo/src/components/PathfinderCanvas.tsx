@@ -1,13 +1,14 @@
 import type { Grid, Waypoint } from '@leptoquark1/openage-pfadfinder';
 import {
   COST_IMPASSABLE,
+  COST_MIN,
   FLOW_DIR_MASK,
   FLOW_LOS_MASK,
   FLOW_PATHABLE_MASK,
   FlowDir,
 } from '@leptoquark1/openage-pfadfinder';
 import { useEffect, useRef } from 'react';
-import { COLORS, type Mode } from '../theme.js';
+import { COLORS, type Mode, TERRAIN_COLORS, terrainOfMode } from '../theme.js';
 import {
   CELL_SIZE,
   MOB_RADIUS,
@@ -18,6 +19,7 @@ import {
   type World,
   type WorldStats,
 } from '../world/world.js';
+import { terrainByCost } from '../world/terrain.js';
 import { Legend } from './Legend.js';
 import { PerfPanel } from './PerfPanel.js';
 import { RepoLink } from './RepoLink.js';
@@ -54,6 +56,14 @@ const PREVIEW_OK = '#3FBF7F';
 const PREVIEW_OK_FILL = 'rgba(63, 191, 127, 0.02)';
 const PREVIEW_BAD = '#E5484D';
 const PREVIEW_BAD_FILL = 'rgba(229, 72, 77, 0.18)';
+
+/** Opacity of the terrain fill, low enough to keep the flow strokes readable. */
+const TERRAIN_ALPHA = 0.32;
+
+/** True for the modes that paint cells and keep painting while dragged. */
+function isPaintMode(mode: Mode): boolean {
+  return mode === 'obstacle' || terrainOfMode(mode) !== null;
+}
 
 export function PathfinderCanvas({
   world,
@@ -120,8 +130,14 @@ export function PathfinderCanvas({
     const handlePointer = (e: PointerEvent, isDrag: boolean) => {
       const { x, y } = toCanvasPos(e);
 
+      const terrain = terrainOfMode(modeRef.current);
+
       // Right button erases the element the current mode places.
       if (erasing) {
+        if (terrain) {
+          world.eraseTerrain(x, y);
+          return;
+        }
         switch (modeRef.current) {
           case 'obstacle':
             world.eraseWall(x, y);
@@ -146,6 +162,11 @@ export function PathfinderCanvas({
             }
             break;
         }
+        return;
+      }
+
+      if (terrain) {
+        world.paintTerrain(x, y, terrain);
         return;
       }
 
@@ -187,12 +208,12 @@ export function PathfinderCanvas({
     const onMove = (e: PointerEvent) => {
       cursor = toCanvasPos(e);
       if (erasing) {
-        if (modeRef.current === 'obstacle') {
+        if (isPaintMode(modeRef.current)) {
           handlePointer(e, true);
         }
         return;
       }
-      if (painting && modeRef.current === 'obstacle') {
+      if (painting && isPaintMode(modeRef.current)) {
         handlePointer(e, true);
       }
     };
@@ -290,7 +311,7 @@ interface Preview {
   readonly y: number;
   /** True when the mode's object can be placed at this position. */
   readonly valid: boolean;
-  /** Wall cell / moving obstacle / mob that right-click would remove here. */
+  /** Wall or terrain cell / moving obstacle / mob that right-click would remove here. */
   readonly eraseCandidate: Waypoint | MovingObstacle | Mob | null;
   /** Pending patrol anchor, when the mode is mid-placement. */
   readonly patrolAnchor: { x: number; y: number } | null;
@@ -299,6 +320,13 @@ interface Preview {
 function evaluatePreview(world: World, mode: Mode, x: number, y: number): Preview | null {
   let valid = false;
   let eraseCandidate: Preview['eraseCandidate'] = null;
+
+  const terrain = terrainOfMode(mode);
+  if (terrain) {
+    valid = world.canPlaceTerrain(x, y);
+    eraseCandidate = world.terrainAt(x, y, terrain);
+    return { mode, x, y, valid, eraseCandidate, patrolAnchor: world.getPatrolAnchor() };
+  }
 
   switch (mode) {
     case 'target':
@@ -338,6 +366,7 @@ function draw(
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, width, height);
 
+  drawTerrain(ctx, world);
   drawGrid(ctx, width, height);
 
   const grid = world.getGrid();
@@ -431,6 +460,39 @@ function drawFlowField(ctx: CanvasRenderingContext2D, world: World, grid: Grid):
       }
     }
   }
+}
+
+/** Painted terrain, one translucent path per terrain type. Cells under a wall are left to the wall. */
+function drawTerrain(ctx: CanvasRenderingContext2D, world: World): void {
+  const terrain = world.getTerrain();
+  const walls = world.getStaticCost();
+  const cols = world.getCols();
+  const paths = new Map<string, Path2D>();
+  for (let i = 0; i < terrain.length; i++) {
+    const cost = terrain[i]!;
+    if (cost === COST_MIN || walls[i] === COST_IMPASSABLE) {
+      continue;
+    }
+    const type = terrainByCost(cost);
+    if (!type) {
+      continue;
+    }
+    let path = paths.get(type.id);
+    if (!path) {
+      path = new Path2D();
+      paths.set(type.id, path);
+    }
+    path.rect((i % cols) * CELL_SIZE, Math.floor(i / cols) * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+  }
+  if (paths.size === 0) {
+    return;
+  }
+  ctx.globalAlpha = TERRAIN_ALPHA;
+  for (const [id, path] of paths) {
+    ctx.fillStyle = TERRAIN_COLORS[id as keyof typeof TERRAIN_COLORS];
+    ctx.fill(path);
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawWalls(ctx: CanvasRenderingContext2D, world: World): void {
@@ -550,6 +612,21 @@ function drawPreview(ctx: CanvasRenderingContext2D, preview: Preview): void {
   ctx.strokeStyle = stroke;
   ctx.fillStyle = fill;
   ctx.lineWidth = 2;
+
+  const terrain = terrainOfMode(preview.mode);
+  if (terrain) {
+    // The cell in the terrain's own color, so the brush shows what it paints.
+    const cx = Math.floor(preview.x / CELL_SIZE) * CELL_SIZE;
+    const cy = Math.floor(preview.y / CELL_SIZE) * CELL_SIZE;
+    if (preview.valid) {
+      ctx.fillStyle = TERRAIN_COLORS[terrain];
+      ctx.globalAlpha = TERRAIN_ALPHA;
+    }
+    ctx.fillRect(cx + 1, cy + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+    ctx.globalAlpha = 1;
+    ctx.strokeRect(cx + 1.5, cy + 1.5, CELL_SIZE - 3, CELL_SIZE - 3);
+    return;
+  }
 
   switch (preview.mode) {
     case 'target':

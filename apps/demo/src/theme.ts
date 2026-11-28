@@ -1,5 +1,16 @@
 import type { LucideIcon } from 'lucide-react';
-import { ArrowLeftRight, Circle, SignpostBig, Square, Target } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Circle,
+  Droplets,
+  Footprints,
+  SignpostBig,
+  Square,
+  Target,
+  Trees,
+  WavesHorizontal,
+} from 'lucide-react';
+import { TERRAINS, type TerrainId } from './world/terrain.js';
 
 /**
  * Design tokens, derived from the grid/flow-field vocabulary of the domain.
@@ -29,14 +40,31 @@ export const COLORS = {
   perfBad: '#E5484D',
 } as const;
 
-export type Mode = 'target' | 'mob' | 'obstacle' | 'movingObstacle' | 'patrolObstacle';
-export type ModeType = 'target' | 'spawn' | 'obstacle';
+/** Fill of each terrain on the canvas, drawn translucent under the flow field. */
+export const TERRAIN_COLORS: Record<TerrainId, string> = {
+  sand: '#D9B26F',
+  forest: '#3E9A5C',
+  mud: '#9A6B43',
+  swamp: '#7C8A3A',
+};
+
+const TERRAIN_ICONS: Record<TerrainId, LucideIcon> = {
+  sand: Footprints,
+  forest: Trees,
+  mud: Droplets,
+  swamp: WavesHorizontal,
+};
+
+export type Mode = 'target' | 'mob' | 'obstacle' | 'movingObstacle' | 'patrolObstacle' | TerrainId;
+export type ModeType = 'target' | 'spawn' | 'obstacle' | 'terrain';
 
 export interface ModeDescriptor {
   readonly id: Mode;
   readonly label: string;
   readonly icon: LucideIcon;
   readonly type: ModeType;
+  /** Cell cost the mode paints — terrain modes only. */
+  readonly cost?: number;
 }
 
 export const MODES: ModeDescriptor[] = [
@@ -45,4 +73,16 @@ export const MODES: ModeDescriptor[] = [
   { id: 'obstacle', label: 'Wall', icon: Square, type: 'obstacle' },
   { id: 'movingObstacle', label: 'Moving', icon: SignpostBig, type: 'obstacle' },
   { id: 'patrolObstacle', label: 'Patrol', icon: ArrowLeftRight, type: 'obstacle' },
+  ...TERRAINS.map(t => ({
+    id: t.id,
+    label: t.label,
+    icon: TERRAIN_ICONS[t.id],
+    type: 'terrain' as const,
+    cost: t.cost,
+  })),
 ];
+
+/** The terrain a mode paints, or null when it paints none. */
+export function terrainOfMode(mode: Mode): TerrainId | null {
+  return TERRAINS.some(t => t.id === mode) ? (mode as TerrainId) : null;
+}

@@ -12,6 +12,7 @@ import {
   type Waypoint,
 } from '@leptoquark1/openage-pfadfinder';
 import { PerfMeter } from './perf.js';
+import { type TerrainId, terrainById } from './terrain.js';
 
 /** Edge length of one grid cell in CSS pixels. */
 export const CELL_SIZE = 32;
@@ -26,7 +27,7 @@ export interface Mob {
   /** Spawn position — a mob returns here after reaching the target. */
   readonly spawnX: number;
   readonly spawnY: number;
-  /** Individual travel speed in px/s, drawn at spawn time. */
+  /** Individual travel speed on free ground in px/s, drawn at spawn time. Terrain slows it down. */
   readonly speed: number;
   /** Cells the mob will pass through, traced along its route. */
   trace: Waypoint[];
@@ -100,8 +101,8 @@ const MAZE_ROOM_MAX = 3;
 /**
  * Simulation state of the playground, kept outside the React render cycle.
  *
- * The world owns a global cost layer (painted walls plus the cells currently
- * covered by moving obstacles) and rebuilds a `Grid` from it whenever that
+ * The world owns a global cost layer (painted walls over the painted terrain,
+ * plus the cells currently covered by moving obstacles) and rebuilds a `Grid` from it whenever that
  * layer changes — portals are derived from cost fields, so they have to be
  * re-derived rather than patched.
  *
@@ -127,6 +128,12 @@ export class World {
    * labyrinth is active.
    */
   private labyrinth: Uint8Array | null = null;
+  /**
+   * Painted terrain: the cost of each cell while no wall stands on it,
+   * `COST_MIN` for free ground. Kept apart from the walls, so a wall painted
+   * on terrain, a labyrinth or a scatter leaves the terrain underneath.
+   */
+  private terrain = new Uint8Array(0);
   /** Static walls plus moving obstacles, the layer sectors are built from. */
   private dynamicCost = new Uint8Array(0);
 
@@ -193,6 +200,11 @@ export class World {
 
   getStaticCost(): Uint8Array {
     return this.staticCost;
+  }
+
+  /** Terrain layer: the cost of every cell without its wall, `COST_MIN` for free ground. */
+  getTerrain(): Uint8Array {
+    return this.terrain;
   }
 
   /**
@@ -284,6 +296,7 @@ export class World {
     // snapshot with them so it can still be removed. New cells are free in
     // both, so removal leaves them alone.
     const next = resizeLayer(this.staticCost, this.cols, this.rows, cols, rows);
+    const terrain = resizeLayer(this.terrain, this.cols, this.rows, cols, rows);
     if (this.labyrinth) {
       this.labyrinth = resizeLayer(this.labyrinth, this.cols, this.rows, cols, rows);
     }
@@ -293,6 +306,7 @@ export class World {
     this.cols = cols;
     this.rows = rows;
     this.staticCost = next;
+    this.terrain = terrain;
     this.dynamicCost = new Uint8Array(cols * rows);
     this.recountWalls();
 
@@ -332,6 +346,7 @@ export class World {
 
   reset(): void {
     this.staticCost.fill(COST_MIN);
+    this.terrain.fill(COST_MIN);
     this.wallCount = 0;
     this.labyrinth = null;
     this.mobs.length = 0;
@@ -816,6 +831,38 @@ export class World {
     this.markCellsDirty(cell.ne, cell.se, cell.ne, cell.se);
   }
 
+  /**
+   * Paint a terrain cell, replacing any other terrain there. Drag-painting
+   * calls this repeatedly. Every cell without a wall is valid.
+   */
+  paintTerrain(px: number, py: number, id: TerrainId): void {
+    if (!this.canPlaceTerrain(px, py)) {
+      return;
+    }
+    const cell = this.cellAt(px, py)!;
+    const idx = cell.ne + cell.se * this.cols;
+    const cost = terrainById(id).cost;
+    if (this.terrain[idx] === cost) {
+      return;
+    }
+    this.terrain[idx] = cost;
+    this.markCellsDirty(cell.ne, cell.se, cell.ne, cell.se);
+  }
+
+  /** Turn a terrain cell back into free ground. Right-click erasing calls this repeatedly. */
+  eraseTerrain(px: number, py: number): void {
+    const cell = this.cellAt(px, py);
+    if (!cell) {
+      return;
+    }
+    const idx = cell.ne + cell.se * this.cols;
+    if (this.terrain[idx] === COST_MIN) {
+      return;
+    }
+    this.terrain[idx] = COST_MIN;
+    this.markCellsDirty(cell.ne, cell.se, cell.ne, cell.se);
+  }
+
   addMovingObstacle(px: number, py: number): void {
     if (!this.canPlaceMovingObstacle(px, py)) {
       return;
@@ -1007,6 +1054,19 @@ export class World {
   }
 
   /**
+   * True when terrain can be painted at the pixel position: any cell without
+   * a wall. Terrain is ground, so the target, mobs and moving obstacles may
+   * stand on it.
+   */
+  canPlaceTerrain(px: number, py: number): boolean {
+    const cell = this.cellAt(px, py);
+    if (!cell) {
+      return false;
+    }
+    return this.staticCost[cell.ne + cell.se * this.cols] !== COST_IMPASSABLE;
+  }
+
+  /**
    * True when a moving obstacle can be added at the pixel position: every
    * cell its box covers must be free.
    */
@@ -1036,6 +1096,23 @@ export class World {
       return null;
     }
     if (this.staticCost[cell.ne + cell.se * this.cols] !== COST_IMPASSABLE) {
+      return null;
+    }
+    return cell;
+  }
+
+  /**
+   * Cell at the pixel position painted with the given terrain — the erase
+   * candidate of that terrain's mode. Other terrain is not: painting over it
+   * replaces it.
+   */
+  terrainAt(px: number, py: number, id: TerrainId): Waypoint | null {
+    const cell = this.cellAt(px, py);
+    if (!cell) {
+      return null;
+    }
+    const idx = cell.ne + cell.se * this.cols;
+    if (this.staticCost[idx] === COST_IMPASSABLE || this.terrain[idx] !== terrainById(id).cost) {
       return null;
     }
     return cell;
@@ -1387,7 +1464,9 @@ export class World {
 
   /** Build the initial grid: full cost copy, portals, portal nodes. */
   private restampAndBuildFullGrid(): void {
-    this.dynamicCost.set(this.staticCost);
+    for (let idx = 0; idx < this.dynamicCost.length; idx++) {
+      this.dynamicCost[idx] = this.groundCost(idx);
+    }
     this.stampObstacles();
 
     const grid = buildGrid(this.dynamicCost, { width: this.cols, height: this.rows }, SECTOR_SIZE);
@@ -1400,7 +1479,7 @@ export class World {
 
   /**
    * Re-stamp the dynamic cost layer under the dirty sectors: clear the
-   * covered rectangle to the static layer, then stamp every obstacle that
+   * covered rectangle to the walls and terrain, then stamp every obstacle that
    * intersects it.
    */
   private restampDirtyCells(dirtySectors: Sector[]): void {
@@ -1408,7 +1487,7 @@ export class World {
     for (let se = rect.minSe; se <= rect.maxSe; se++) {
       const rowStart = se * this.cols;
       for (let ne = rect.minNe; ne <= rect.maxNe; ne++) {
-        this.dynamicCost[rowStart + ne] = this.staticCost[rowStart + ne]!;
+        this.dynamicCost[rowStart + ne] = this.groundCost(rowStart + ne);
       }
     }
     for (const o of this.obstacles) {
@@ -1426,6 +1505,11 @@ export class World {
         }
       }
     }
+  }
+
+  /** Cost of a cell without moving obstacles: its wall, else its terrain. */
+  private groundCost(idx: number): number {
+    return this.staticCost[idx] === COST_IMPASSABLE ? COST_IMPASSABLE : this.terrain[idx]!;
   }
 
   /** Bounding rectangle of the dirty sectors, in cells. */
@@ -1692,12 +1776,15 @@ export class World {
           }
         }
 
+        // Terrain slows the mob down by its cost. A mob stuck in a wall
+        // walks out at full speed, whatever terrain lies underneath.
+        const speed = stuck ? mob.speed : mob.speed * terrainSpeedFactor(this.terrain[cell.ne + cell.se * this.cols]!);
         const dx = aimX - mob.x;
         const dy = aimY - mob.y;
         const dist = Math.hypot(dx, dy);
         if (dist > 0.001) {
-          vx = (dx / dist) * mob.speed;
-          vy = (dy / dist) * mob.speed;
+          vx = (dx / dist) * speed;
+          vy = (dy / dist) * speed;
         }
       }
 
@@ -1750,6 +1837,15 @@ export class World {
       }
     }
   }
+}
+
+/**
+ * Share of its speed a mob keeps on a cell of the given cost: one cell of
+ * cost `c` takes `c` times as long to cross as free ground, so the cheapest
+ * route the library plans is also the fastest one to walk.
+ */
+export function terrainSpeedFactor(cost: number): number {
+  return COST_MIN / Math.max(cost, COST_MIN);
 }
 
 /**
