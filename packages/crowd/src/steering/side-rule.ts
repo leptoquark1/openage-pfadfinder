@@ -1,4 +1,5 @@
 import type { CrowdContext, NeighborList } from '../context.js';
+import { nonNegative, positive } from '../options.js';
 import type { Vec2 } from '../vec2.js';
 import { timeToCollision } from './ttc.js';
 import type { PreferredVelocityModifier } from './types.js';
@@ -50,24 +51,52 @@ export interface SideRuleOptions {
  * last word on the direction. Keeps the speed.
  */
 export class SideRule implements PreferredVelocityModifier {
-  private readonly side: number;
-  private readonly strength: number;
-  private readonly cosAngle: number;
-  private readonly horizon: number;
-  private readonly inflate: number;
-  private readonly lateral: number;
-  private readonly overtake: boolean;
-  private readonly overtakeBelow: number;
+  private current: Required<SideRuleOptions> = {
+    side: 'right',
+    strength: 1,
+    angle: 45,
+    horizon: 2,
+    inflate: 1.5,
+    lateral: 0.5,
+    overtake: true,
+    overtakeBelow: 0.75,
+  };
+  private side = 1;
+  private strength = 1;
+  private cosAngle = Math.cos(Math.PI / 4);
+  private horizon = 2;
+  private inflate = 1.5;
+  private lateral = 0.5;
+  private overtake = true;
+  private overtakeBelow = 0.75;
 
   constructor(options: SideRuleOptions = {}) {
-    this.side = (options.side ?? 'right') === 'right' ? 1 : -1;
-    this.strength = options.strength ?? 1;
-    this.cosAngle = Math.cos(((options.angle ?? 45) * Math.PI) / 180);
-    this.horizon = options.horizon ?? 2;
-    this.inflate = options.inflate ?? 1.5;
-    this.lateral = options.lateral ?? 0.5;
-    this.overtake = options.overtake ?? true;
-    this.overtakeBelow = options.overtakeBelow ?? 0.75;
+    this.configure(options);
+  }
+
+  /** Change options while the simulation runs; omitted ones keep their value. */
+  configure(options: SideRuleOptions): void {
+    const next = { ...this.current, ...definedOnly(options) };
+    if (next.side !== 'right' && next.side !== 'left') {
+      throw new RangeError(`side must be 'right' or 'left', got ${String(next.side)}`);
+    }
+    if (!(next.angle >= 0 && next.angle <= 90)) {
+      throw new RangeError(`angle must be between 0 and 90 degrees, got ${next.angle}`);
+    }
+    this.side = next.side === 'right' ? 1 : -1;
+    this.strength = nonNegative('strength', next.strength);
+    this.cosAngle = Math.cos((next.angle * Math.PI) / 180);
+    this.horizon = positive('horizon', next.horizon);
+    this.inflate = positive('inflate', next.inflate);
+    this.lateral = nonNegative('lateral', next.lateral);
+    this.overtake = next.overtake;
+    this.overtakeBelow = nonNegative('overtakeBelow', next.overtakeBelow);
+    this.current = next;
+  }
+
+  /** Current options. */
+  get options(): Required<SideRuleOptions> {
+    return { ...this.current };
   }
 
   apply(ctx: CrowdContext, i: number, neighbors: NeighborList, v: Vec2): void {
@@ -131,4 +160,9 @@ export class SideRule implements PreferredVelocityModifier {
     v.x = (nx / len) * speed;
     v.y = (ny / len) * speed;
   }
+}
+
+/** The options that are set, so spreading them does not overwrite defaults with undefined. */
+function definedOnly<T extends object>(options: T): Partial<T> {
+  return Object.fromEntries(Object.entries(options).filter(([, v]) => v !== undefined)) as Partial<T>;
 }

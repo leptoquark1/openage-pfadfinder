@@ -35,6 +35,8 @@ function frame(dtSeconds: number) {
 }
 ```
 
+Strategies change while the simulation runs: `PowerLawAvoidance`, `Separation`, `SideRule`, `DensityCostModel` and `PathGuidance` have `configure(options)` (omitted options keep their value, invalid ones throw a `RangeError`) and an `options` getter. `addAgent()` takes an optional initial `velocity`, e.g. to carry agents over into a new simulation.
+
 More on the simulation: `plan()` plans routes without moving anyone (e.g. right after goals or terrain changed, to draw the routes before the next step), `setMaxSpeed()` changes an agent's top speed (e.g. by the terrain under it), `teleport()`, `removeAgent()`, `forEachNeighbor()`. `FlowRouteGuidance.getRoute(agent)` returns the route an agent follows, to draw it. The playground in [`apps/demo`](../../apps/demo/src/world/world.ts) is a complete consumer.
 
 Lengths are in **cells**, times in **seconds**. Cell `(ne, se)` covers `[ne, ne + 1) × [se, se + 1)`, so its center is `(ne + 0.5, se + 0.5)`; `x` runs along `ne`, `y` along `se`.
@@ -60,6 +62,7 @@ The side rule acts on the *preferred* velocity, before avoidance, so avoidance a
 | Part | Class | What it does | Source |
 | --- | --- | --- | --- |
 | Guidance | `FlowRouteGuidance` | Follows `Pathfinder.getFlowRoute()`; routes shared per (group, goal), planning budgeted, staleness by cost field versions | — |
+| Guidance | `PathGuidance` | One path per agent from `Pathfinder.getPath()`: heads for its waypoints, skips ahead in straight sight, replans when the line is blocked or every `replanInterval` | — |
 | Avoidance | `PowerLawAvoidance` | Time-to-collision power law, `F = −∇ₓ(k/τ² · e^(−τ/τ₀))` | Karamouzas, Skinner, Guy 2014 |
 | Short range | `Separation` | Repulsion when bodies (nearly) touch, where τ is ill-conditioned | Reynolds 1999 |
 | Lanes | `SideRule` | In counter-flow, turn to the own right (or left); overtake slower agents on the other side | Moussaïd et al. 2009 |
@@ -81,6 +84,9 @@ The side rule acts on the *preferred* velocity, before avoidance, so avoidance a
 | `lookahead` | 3 | Cells aimed ahead along the flow while the line is clear |
 | `slowRadius` | 1.5 | Braking distance before the goal |
 | `retryInterval` / `routeTtl` | 20 / 200 ticks | Retry of unreachable goals / drop of unused routes |
+| **`PathGuidance`** | | |
+| `maxPlansPerTick` / `replanInterval` | 8 / 2 s | Path plans per tick (blocked lines replan outside it, capped at 4×) / periodic replan (0: off) |
+| `waypointRadius` / `slowRadius` / `retryInterval` | 0.35 / 1.5 / 20 ticks | Waypoint reached / braking distance / retry of unreachable goals |
 | **`PowerLawAvoidance`** | | |
 | `strength` (k) / `tau0` (τ₀) | 1.5 / 3 s | Interaction strength / exponential cutoff |
 | `horizon` / `tauMin` / `maxForce` | 3 s / 0.2 s / 20 | Ignored beyond / saturation below / cap of the sum |

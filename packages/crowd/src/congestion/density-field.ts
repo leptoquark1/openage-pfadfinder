@@ -24,7 +24,7 @@ export class DensityField implements DensityFieldView {
   private readonly inList: Uint8Array;
   private active: Int32Array;
   private activeCount = 0;
-  private readonly alpha: number;
+  private alpha: number;
 
   constructor(width: number, height: number, dt: number, smoothingTime: number) {
     this.width = width;
@@ -33,6 +33,11 @@ export class DensityField implements DensityFieldView {
     this.obs = new Float64Array(width * height);
     this.inList = new Uint8Array(width * height);
     this.active = new Int32Array(64);
+    this.alpha = smoothingTime > 0 ? 1 - Math.exp(-dt / smoothingTime) : 1;
+  }
+
+  /** Change the time constant `T` of the smoothing. */
+  setSmoothing(dt: number, smoothingTime: number): void {
     this.alpha = smoothingTime > 0 ? 1 - Math.exp(-dt / smoothingTime) : 1;
   }
 

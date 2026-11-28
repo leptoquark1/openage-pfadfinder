@@ -1,4 +1,5 @@
 import type { CrowdContext, NeighborList } from '../context.js';
+import { nonNegative, positive } from '../options.js';
 import type { Vec2 } from '../vec2.js';
 import type { SteeringForce } from './types.js';
 
@@ -33,18 +34,28 @@ export interface PowerLawOptions {
  * agents get none either: separation and the overlap resolver handle them.
  */
 export class PowerLawAvoidance implements SteeringForce {
-  private readonly k: number;
-  private readonly tau0: number;
-  private readonly horizon: number;
-  private readonly tauMin: number;
-  private readonly maxForce: number;
+  private k = 1.5;
+  private tau0 = 3;
+  private horizon = 3;
+  private tauMin = 0.2;
+  private maxForce = 20;
 
   constructor(options: PowerLawOptions = {}) {
-    this.k = options.strength ?? 1.5;
-    this.tau0 = options.tau0 ?? 3;
-    this.horizon = options.horizon ?? 3;
-    this.tauMin = options.tauMin ?? 0.2;
-    this.maxForce = options.maxForce ?? 20;
+    this.configure(options);
+  }
+
+  /** Change options while the simulation runs; omitted ones keep their value. */
+  configure(options: PowerLawOptions): void {
+    this.k = nonNegative('strength', options.strength ?? this.k);
+    this.tau0 = positive('tau0', options.tau0 ?? this.tau0);
+    this.horizon = nonNegative('horizon', options.horizon ?? this.horizon);
+    this.tauMin = positive('tauMin', options.tauMin ?? this.tauMin);
+    this.maxForce = nonNegative('maxForce', options.maxForce ?? this.maxForce);
+  }
+
+  /** Current options. */
+  get options(): Required<PowerLawOptions> {
+    return { strength: this.k, tau0: this.tau0, horizon: this.horizon, tauMin: this.tauMin, maxForce: this.maxForce };
   }
 
   accumulate(ctx: CrowdContext, i: number, neighbors: NeighborList, outAccel: Vec2): void {

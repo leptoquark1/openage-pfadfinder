@@ -1,5 +1,6 @@
 import { COST_IMPASSABLE, COST_MAX, type Grid, type Sector, type SectorId } from '@leptoquark1/openage-pfadfinder';
 import type { CrowdContext, DensityFieldView, NavigationView } from '../context.js';
+import { nonNegative, positive } from '../options.js';
 import { DensityField } from './density-field.js';
 import { type CongestionCommit, type CongestionModel, type CostChange, EMPTY_COMMIT } from './types.js';
 
@@ -62,15 +63,16 @@ interface SectorState {
  * terrain.
  */
 export class DensityCostModel implements CongestionModel {
-  private readonly smoothingTime: number;
-  private readonly freeDensity: number;
-  private readonly costPerDensity: number;
-  private readonly maxSurcharge: number;
-  private readonly riseThreshold: number;
-  private readonly fallThreshold: number;
-  private readonly maxStep: number;
-  private readonly commitIntervalSec: number;
-  private readonly dwellTimeSec: number;
+  private smoothingTime = 2;
+  private freeDensity = 0.4;
+  private costPerDensity = 40;
+  private maxSurcharge = 60;
+  private riseThreshold = 3;
+  private fallThreshold = 6;
+  private maxStep = 15;
+  private commitIntervalSec = 0.5;
+  private dwellTimeSec = 1;
+  private dt = 0;
 
   private grid: Grid | null = null;
   private nav: NavigationView | null = null;
@@ -80,15 +82,42 @@ export class DensityCostModel implements CongestionModel {
   private readonly sectors = new Map<SectorId, SectorState>();
 
   constructor(options: DensityCostOptions = {}) {
-    this.smoothingTime = options.smoothingTime ?? 2;
-    this.freeDensity = options.freeDensity ?? 0.4;
-    this.costPerDensity = options.costPerDensity ?? 40;
-    this.maxSurcharge = Math.min(COST_MAX, options.maxSurcharge ?? 60);
-    this.riseThreshold = Math.max(1, options.riseThreshold ?? 3);
-    this.fallThreshold = Math.max(1, options.fallThreshold ?? 6);
-    this.maxStep = Math.max(1, options.maxStep ?? 15);
-    this.commitIntervalSec = options.commitInterval ?? 0.5;
-    this.dwellTimeSec = options.dwellTime ?? 1;
+    this.configure(options);
+  }
+
+  /**
+   * Change options while the simulation runs; omitted ones keep their
+   * value. Surcharges already written move towards the new targets with the
+   * next commits, within the usual hysteresis and step limits.
+   */
+  configure(options: DensityCostOptions): void {
+    this.smoothingTime = nonNegative('smoothingTime', options.smoothingTime ?? this.smoothingTime);
+    this.freeDensity = nonNegative('freeDensity', options.freeDensity ?? this.freeDensity);
+    this.costPerDensity = nonNegative('costPerDensity', options.costPerDensity ?? this.costPerDensity);
+    this.maxSurcharge = Math.min(COST_MAX, nonNegative('maxSurcharge', options.maxSurcharge ?? this.maxSurcharge));
+    this.riseThreshold = Math.max(1, options.riseThreshold ?? this.riseThreshold);
+    this.fallThreshold = Math.max(1, options.fallThreshold ?? this.fallThreshold);
+    this.maxStep = Math.max(1, options.maxStep ?? this.maxStep);
+    this.commitIntervalSec = positive('commitInterval', options.commitInterval ?? this.commitIntervalSec);
+    this.dwellTimeSec = nonNegative('dwellTime', options.dwellTime ?? this.dwellTimeSec);
+    if (this.dt > 0) {
+      this.applyTiming();
+    }
+  }
+
+  /** Current options. */
+  get options(): Required<DensityCostOptions> {
+    return {
+      smoothingTime: this.smoothingTime,
+      freeDensity: this.freeDensity,
+      costPerDensity: this.costPerDensity,
+      maxSurcharge: this.maxSurcharge,
+      riseThreshold: this.riseThreshold,
+      fallThreshold: this.fallThreshold,
+      maxStep: this.maxStep,
+      commitInterval: this.commitIntervalSec,
+      dwellTime: this.dwellTimeSec,
+    };
   }
 
   get field(): DensityFieldView | undefined {
@@ -99,8 +128,14 @@ export class DensityCostModel implements CongestionModel {
     this.grid = grid;
     this.nav = navigation;
     this.density = new DensityField(navigation.width, navigation.height, dt, this.smoothingTime);
-    this.commitTicks = Math.max(1, Math.round(this.commitIntervalSec / dt));
-    this.dwellTicks = Math.max(0, Math.round(this.dwellTimeSec / dt));
+    this.dt = dt;
+    this.applyTiming();
+  }
+
+  private applyTiming(): void {
+    this.density?.setSmoothing(this.dt, this.smoothingTime);
+    this.commitTicks = Math.max(1, Math.round(this.commitIntervalSec / this.dt));
+    this.dwellTicks = Math.max(0, Math.round(this.dwellTimeSec / this.dt));
   }
 
   /** Surcharge currently written on a cell (0 when none). */

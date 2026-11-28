@@ -192,10 +192,18 @@ export class CrowdSimulation {
       throw new RangeError(`group must be a non-negative integer, got ${group}`);
     }
     assertFinite(params.position);
+    if (params.velocity) {
+      assertFinite(params.velocity);
+    }
     this.pos.x = params.position.x;
     this.pos.y = params.position.y;
     resolveWalls(this.nav, this.pos, null, radius);
     const id = this.store.add(this.pos.x, this.pos.y, radius, maxSpeed, maxAccel, group);
+    if (params.velocity) {
+      const i = this.store.indexOf(id);
+      this.store.pvx[i] = params.velocity.x;
+      this.store.pvy[i] = params.velocity.y;
+    }
     if (radius * 2 > this.hashCellSize) {
       this.hashCellSize = radius * 2;
       this.hash = new SpatialHash(this.nav.width, this.nav.height, this.hashCellSize);

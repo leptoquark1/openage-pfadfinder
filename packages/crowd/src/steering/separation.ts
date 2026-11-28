@@ -1,4 +1,5 @@
 import type { CrowdContext, NeighborList } from '../context.js';
+import { nonNegative, positive } from '../options.js';
 import type { Vec2 } from '../vec2.js';
 import { fallbackDirection } from './fallback.js';
 import type { SteeringForce } from './types.js';
@@ -19,13 +20,23 @@ export interface SeparationOptions {
  * `strength` at contact and at most `2 · strength` deep in an overlap.
  */
 export class Separation implements SteeringForce {
-  private readonly range: number;
-  private readonly strength: number;
+  private range = 0.2;
+  private strength = 8;
   private readonly dir: Vec2 = { x: 0, y: 0 };
 
   constructor(options: SeparationOptions = {}) {
-    this.range = options.range ?? 0.2;
-    this.strength = options.strength ?? 8;
+    this.configure(options);
+  }
+
+  /** Change options while the simulation runs; omitted ones keep their value. */
+  configure(options: SeparationOptions): void {
+    this.range = positive('range', options.range ?? this.range);
+    this.strength = nonNegative('strength', options.strength ?? this.strength);
+  }
+
+  /** Current options. */
+  get options(): Required<SeparationOptions> {
+    return { range: this.range, strength: this.strength };
   }
 
   accumulate(ctx: CrowdContext, i: number, neighbors: NeighborList, outAccel: Vec2): void {

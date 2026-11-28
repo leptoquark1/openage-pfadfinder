@@ -35,6 +35,8 @@ export interface AgentParams {
   readonly maxAccel?: number;
   /** Agents of one group with the same goal share one route. */
   readonly group?: number;
+  /** Initial velocity (cells/s); at rest when omitted. */
+  readonly velocity?: Readonly<Vec2>;
   /** Target cell; the agent starts `IDLE` without one. */
   readonly goal?: TileDelta;
 }

@@ -23,6 +23,8 @@ export type { CongestionCommit, CongestionModel, CostChange } from './congestion
 // --- Built-in strategies ---
 export type { FlowRouteGuidanceOptions } from './guidance/flow-route.js';
 export { FlowRouteGuidance } from './guidance/flow-route.js';
+export type { PathGuidanceOptions } from './guidance/path.js';
+export { PathGuidance } from './guidance/path.js';
 export type { PowerLawOptions } from './steering/power-law.js';
 export { PowerLawAvoidance } from './steering/power-law.js';
 export type { SeparationOptions } from './steering/separation.js';
