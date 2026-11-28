@@ -1,5 +1,16 @@
 import type { LucideIcon } from 'lucide-react';
-import { Activity, BookOpen, BrickWall, Dices, Eye, Info, RotateCcw, Route } from 'lucide-react';
+import {
+  Activity,
+  ArrowRightLeft,
+  BookOpen,
+  BrickWall,
+  Dices,
+  Eye,
+  Info,
+  RotateCcw,
+  Route,
+  TrafficCone,
+} from 'lucide-react';
 import { MODES, type Mode } from '../theme.js';
 
 interface ToolbarButtonProps {
@@ -52,6 +63,10 @@ interface ToolbarProps {
   mazeActive: boolean;
   onToggleLabyrinth: () => void;
   onScatterWalls: () => void;
+  lanes: boolean;
+  onLanes: (on: boolean) => void;
+  congestion: boolean;
+  onCongestion: (on: boolean) => void;
   mobCount: number;
   obstacleCount: number;
 }
@@ -71,6 +86,10 @@ export function Toolbar({
   mazeActive,
   onToggleLabyrinth,
   onScatterWalls,
+  lanes,
+  onLanes,
+  congestion,
+  onCongestion,
   mobCount,
   obstacleCount,
 }: ToolbarProps) {
@@ -104,6 +123,11 @@ export function Toolbar({
           />
         ))}
       </div>
+
+      <ToolbarSectionTitle label="Crowd" mt={true} />
+
+      <ToolbarButton active={lanes} icon={ArrowRightLeft} label="Lanes" onClick={() => onLanes(!lanes)} />
+      <ToolbarButton active={congestion} icon={TrafficCone} label="Jams" onClick={() => onCongestion(!congestion)} />
 
       <div className="flex-1" />
 

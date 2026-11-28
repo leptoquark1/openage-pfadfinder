@@ -843,19 +843,23 @@ Some public members are no longer used by the library code. Removing them would 
 `apps/demo` shows the library under load and plans **no routes of its own**. Both of its parts go through the public
 API:
 
-- The **playground** (`World`) keeps one global cost layer, syncs it with `buildGrid` and `Grid.updateCosts`, and gets
-  every route from `Pathfinder.getFlowRoute()`.
+- The **playground** (`World`) keeps one global cost layer, syncs it with `buildGrid` and `Grid.updateCosts`, and moves
+  its mobs as a crowd with the [crowd plugin](#13-the-crowd-plugin), which gets every route from
+  `Pathfinder.getFlowRoute()`.
 - The **guide** runs the real `Pathfinder` and `portalAStar` and records what they do. Its tests compare the recordings
   with the library.
 
-Mobs standing in the same walkable area of a sector (`Sector.getAreas()`) share one `FlowRoute`, planned for the first
-mob that asks for it. Each mob then gets its next cell from `FlowRoute.next()`, and a mob pushed off its route switches
-to the route of the area it stands in. After a change to the target or the costs, the next planning tick assigns every
-mob a route again. Sectors whose costs stayed the same reuse their cached fields.
+Every mob is an agent of a `CrowdSimulation`. Its `FlowRouteGuidance` shares routes between the mobs that can use them
+and plans new ones within a budget; avoidance, lanes (side rule) and walls are the plugin's. Incremental cost updates go
+through `CrowdSimulation.applyTerrain()`, so routes over changed sectors are replanned at once and, with the congestion
+toggle on, terrain and density surcharges stay apart. A grid built from scratch (first build, resize, reset) or changed
+crowd settings get a new crowd with every mob at its position.
 
-What stays in the demo is the simulation around the routes: walls, labyrinths, moving obstacles, mob movement and local
-avoidance. A mob counts as blocked when the library has no route for it. The flow overlay draws the fields of the routes
-in use, so sectors no mob's route passes through show no arrows.
+What stays in the demo is the world around the crowd: walls, labyrinths, terrain, moving obstacles (a `SteeringForce` of
+the demo keeps mobs off them between planning ticks, and the planning tick stamps them into the cost layer), the
+respawn of arrived mobs and the terrain slowdown (`setMaxSpeed()` by the cost of the mob's cell). A mob counts as
+blocked when the library has no route for it. The traces and the flow overlay show the routes the agents follow
+(`FlowRouteGuidance.getRoute()`), so sectors no mob's route passes through show no arrows.
 
 ```mermaid
 flowchart TD
@@ -870,15 +874,16 @@ flowchart TD
     subgraph World["World"]
         Obstacles["moveObstacles()"] --> Plan{"100 ms since<br/>last planning?"}
         Plan -- yes --> Rebuild["rebuildGrid()<br/>only after changes"]
-        Rebuild --> Routes["refreshRoutes()<br/>one route per sector area"]
-        Routes --> Trace["traceMob()<br/>at most 12 per tick"]
-        Trace --> Mobs["moveMobs()"]
+        Rebuild --> CrowdPlan["crowd.plan()<br/>after changes"]
+        CrowdPlan --> Trace["traceMob()<br/>at most 12 per tick"]
+        Trace --> Mobs["moveMobs()<br/>fixed crowd steps"]
         Plan -- no --> Mobs
     end
 
-    Rebuild -. "buildGrid, updateCosts" .-> Library["openage-pfadfinder"]
-    Routes -. "Pathfinder.getFlowRoute" .-> Library
-    Mobs -. "FlowRoute.next" .-> Library
+    Rebuild -. "buildGrid, applyTerrain" .-> Crowd["openage-pfadfinder-crowd"]
+    CrowdPlan -.-> Crowd
+    Mobs -. "step, getPosition" .-> Crowd
+    Crowd -. "getFlowRoute, FlowRoute.next" .-> Library["openage-pfadfinder"]
 ```
 
 ## 11. Build, quality and release
@@ -933,8 +938,8 @@ Tests are organized by topic:
 
 ## 13. The crowd plugin
 
-`packages/crowd` (`@leptoquark1/openage-pfadfinder-crowd`, in development, private) moves crowds along the routes of
-this library. It depends on the public API only (peer dependency) and changes nothing in the core. Details, defaults
+`packages/crowd` (`@leptoquark1/openage-pfadfinder-crowd`) moves crowds along the routes of this library; the demo's
+mobs use it (section 10). It depends on the public API only (peer dependency) and changes nothing in the core. Details, defaults
 and sources are in its [README](../packages/crowd/README.md).
 
 | Concern | Module | Uses from the core |

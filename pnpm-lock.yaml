@@ -222,6 +222,9 @@ importers:
       '@leptoquark1/openage-pfadfinder':
         specifier: workspace:*
         version: link:../../packages/pfadfinder
+      '@leptoquark1/openage-pfadfinder-crowd':
+        specifier: workspace:*
+        version: link:../../packages/crowd
       lucide-react:
         specifier: ^1.76.0
         version: 1.76.0(@types/react@19.3.0)(react@19.3.1)

@@ -22,6 +22,7 @@ export function App() {
   // Obstacles the labyrinth would remove, while its confirmation is open.
   const [mazeConfirm, setMazeConfirm] = useState<{ walls: number; moving: number } | null>(null);
   const [stats, setStats] = useState<WorldStats>(EMPTY_STATS);
+  const [crowd, setCrowd] = useState(() => world.getCrowdSettings());
   const [showWelcome, setShowWelcome] = useState(() => isUnseen(WELCOME_KEY));
 
   const handleWelcomeDone = useCallback(() => {
@@ -85,6 +86,22 @@ export function App() {
     setMazeConfirm(null);
   }, []);
 
+  const handleLanes = useCallback(
+    (lanes: boolean) => {
+      world.setCrowdSettings({ lanes });
+      setCrowd(world.getCrowdSettings());
+    },
+    [world],
+  );
+
+  const handleCongestion = useCallback(
+    (congestion: boolean) => {
+      world.setCrowdSettings({ congestion });
+      setCrowd(world.getCrowdSettings());
+    },
+    [world],
+  );
+
   const handleScatterWalls = useCallback(() => {
     world.scatterWallsAroundTarget();
   }, [world]);
@@ -108,6 +125,10 @@ export function App() {
         mazeActive={mazeActive}
         onToggleLabyrinth={handleToggleLabyrinth}
         onScatterWalls={handleScatterWalls}
+        lanes={crowd.lanes}
+        onLanes={handleLanes}
+        congestion={crowd.congestion}
+        onCongestion={handleCongestion}
         mobCount={stats.mobs}
         obstacleCount={stats.obstacles}
       />
