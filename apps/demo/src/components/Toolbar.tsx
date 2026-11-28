@@ -1,5 +1,17 @@
 import type { LucideIcon } from 'lucide-react';
-import { Activity, BookOpen, BrickWall, Dices, Eye, Info, RotateCcw, Route } from 'lucide-react';
+import {
+  Activity,
+  BookOpen,
+  BrickWall,
+  Dices,
+  Eye,
+  Info,
+  RotateCcw,
+  Route,
+  Shapes,
+  SlidersHorizontal,
+  Users,
+} from 'lucide-react';
 import { MODES, type Mode } from '../theme.js';
 
 interface ToolbarButtonProps {
@@ -37,7 +49,12 @@ function ToolbarSectionTitle({ label, mt }: { label: string; mt?: boolean }) {
   );
 }
 
+/** The two maps of the demo: the free playground and the crowd simulation. */
+export type Scene = 'sandbox' | 'crowds';
+
 interface ToolbarProps {
+  scene: Scene;
+  onScene: (scene: Scene) => void;
   mode: Mode;
   onMode: (mode: Mode) => void;
   showFlow: boolean;
@@ -52,11 +69,15 @@ interface ToolbarProps {
   mazeActive: boolean;
   onToggleLabyrinth: () => void;
   onScatterWalls: () => void;
+  showCrowd: boolean;
+  onShowCrowd: (show: boolean) => void;
   mobCount: number;
   obstacleCount: number;
 }
 
 export function Toolbar({
+  scene,
+  onScene,
   mode,
   onMode,
   showFlow,
@@ -71,16 +92,37 @@ export function Toolbar({
   mazeActive,
   onToggleLabyrinth,
   onScatterWalls,
+  showCrowd,
+  onShowCrowd,
   mobCount,
   obstacleCount,
 }: ToolbarProps) {
   return (
     <div className="flex w-21 shrink-0 flex-col gap-1.5 border-r border-border bg-bg px-2 py-4 overflow-y-auto scrollbar-subtle">
-      <ToolbarSectionTitle label="Objects" />
+      <ToolbarSectionTitle label="Scene" />
+
+      <div role="radiogroup" aria-label="Scene">
+        <ToolbarButton active={scene === 'sandbox'} icon={Shapes} label="Sandbox" onClick={() => onScene('sandbox')} />
+        <ToolbarButton active={scene === 'crowds'} icon={Users} label="Crowds" onClick={() => onScene('crowds')} />
+      </div>
+
+      <ToolbarSectionTitle label="Objects" mt={true} />
 
       <div role="radiogroup" aria-label="Mode">
-        {MODES.filter(m => m.type === 'target' || m.type === 'spawn').map(m => (
-          <ToolbarButton key={m.id} active={mode === m.id} icon={m.icon} label={m.label} onClick={() => onMode(m.id)} />
+        {MODES.filter(
+          m =>
+            (m.type === 'target' || m.type === 'spawn') &&
+            // start only in the crowd scene; there mobs come from the groups
+            (scene === 'crowds' ? m.id !== 'mob' : m.id !== 'start'),
+        ).map(m => (
+          <ToolbarButton
+            key={m.id}
+            active={mode === m.id}
+            icon={m.icon}
+            // in the crowd scene the target is the selected group's goal
+            label={scene === 'crowds' && m.id === 'target' ? 'Goal' : m.label}
+            onClick={() => onMode(m.id)}
+          />
         ))}
 
         <ToolbarSectionTitle label="Obstacles" mt={true} />
@@ -111,6 +153,12 @@ export function Toolbar({
 
       <ToolbarButton active={showFlow} icon={Eye} label="Flow" onClick={() => onShowFlow(!showFlow)} />
       <ToolbarButton active={showTraces} icon={Route} label="Traces" onClick={() => onShowTraces(!showTraces)} />
+      <ToolbarButton
+        active={showCrowd}
+        icon={SlidersHorizontal}
+        label="Tuning"
+        onClick={() => onShowCrowd(!showCrowd)}
+      />
       <ToolbarButton active={showPerf} icon={Activity} label="Perf" onClick={() => onShowPerf(!showPerf)} />
       <ToolbarButton active={showLegend} icon={Info} label="Legend" onClick={() => onShowLegend(!showLegend)} />
       <ToolbarButton icon={BrickWall} label="Scatter" onClick={onScatterWalls} />

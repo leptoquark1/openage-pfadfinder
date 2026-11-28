@@ -1,6 +1,7 @@
 import { COST_IMPASSABLE, COST_MIN } from '@leptoquark1/openage-pfadfinder';
 import { describe, expect, it } from 'vitest';
 import { terrainById } from '../src/world/terrain.js';
+import { CROWD_TIMESTEP } from '../src/world/crowd.js';
 import { CELL_SIZE, terrainSpeedFactor, World } from '../src/world/world.js';
 
 const px = (cell: number) => cell * CELL_SIZE + CELL_SIZE / 2;
@@ -119,7 +120,8 @@ describe('terrain', () => {
 
   it('slows mobs down by the cost of the cell they walk on', () => {
     // One row, target far to the east: the mob walks straight along it.
-    const distance = (paint: boolean) => {
+    // Agents accelerate towards their top speed, so measure once it is reached.
+    const pace = (paint: boolean) => {
       const world = new World();
       world.resize(16, 16);
       for (let se = 0; se < 16; se++) {
@@ -135,17 +137,23 @@ describe('terrain', () => {
       world.addMob(px(1), px(2));
       world.step(0, 100);
       const mob = world.getMobs()[0]!;
-      const startX = mob.x;
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 120; i++) {
         world.step(16, 200 + i * 16);
+      }
+      const startX = mob.x;
+      for (let i = 0; i < 30; i++) {
+        world.step(16, 2200 + i * 16);
       }
       return { moved: mob.x - startX, speed: mob.speed };
     };
 
-    const free = distance(false);
-    const mud = distance(true);
-    expect(free.moved).toBeCloseTo(free.speed * 0.32, 1);
-    expect(mud.moved).toBeCloseTo(mud.speed * 0.32 * terrainSpeedFactor(terrainById('mud').cost), 1);
+    // 30 frames of 16 ms; fixed crowd steps may leave up to one step unspent
+    const seconds = 30 * 0.016;
+    const free = pace(false);
+    const mud = pace(true);
+    const mudSpeed = mud.speed * terrainSpeedFactor(terrainById('mud').cost);
+    expect(Math.abs(free.moved - free.speed * seconds)).toBeLessThan(free.speed * CROWD_TIMESTEP + 1);
+    expect(Math.abs(mud.moved - mudSpeed * seconds)).toBeLessThan(mudSpeed * CROWD_TIMESTEP + 1);
   });
 
   it('keeps full speed on free ground', () => {

@@ -5,6 +5,8 @@ import type { World } from '../world/world.js';
 
 interface PerfPanelProps {
   world: World;
+  /** Tailwind position classes; top left by default. */
+  position?: string;
 }
 
 /** Refresh rate of the panel — fast enough to feel live, slow enough to read. */
@@ -45,7 +47,7 @@ function budgetColor(ms: number): string {
  * every frame — their "/s" column says how often they actually ran, which is
  * what makes their millisecond cost comparable to the per-frame phases.
  */
-export function PerfPanel({ world }: PerfPanelProps) {
+export function PerfPanel({ world, position = 'top-3.5 left-3.5' }: PerfPanelProps) {
   const [snapshot, setSnapshot] = useState<PerfSnapshot>(EMPTY_SNAPSHOT);
 
   useEffect(() => {
@@ -60,7 +62,7 @@ export function PerfPanel({ world }: PerfPanelProps) {
 
   return (
     <div
-      className="absolute top-3.5 left-3.5 w-56 rounded-lg border border-border bg-panel/85 px-3 py-2 font-mono text-[11px] text-muted backdrop-blur-sm"
+      className={`absolute ${position} w-56 rounded-lg border border-border bg-panel/85 px-3 py-2 font-mono text-[11px] text-muted backdrop-blur-sm`}
       aria-live="off"
     >
       <div className="mb-2 border-b border-divider pb-1 tracking-[0.08em] text-[10px] text-section">PERFORMANCE</div>

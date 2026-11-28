@@ -37,7 +37,13 @@ jobs:
         id: next
         run: |
           pnpm exec changeset status --output=changeset-status.json
-          release=$(node -p "const r = require('./changeset-status.json').releases.find(r => r.name === '@leptoquark1/openage-pfadfinder'); r ? r.type + ' version ' + r.newVersion : ''")
+          # "minor version 2.1.0" for the library, other packages appended as "crowd 0.1.0"
+          release=$(node -p "
+            const rs = require('./changeset-status.json').releases.filter(r => r.type !== 'none');
+            const core = rs.find(r => r.name === '@leptoquark1/openage-pfadfinder');
+            const rest = rs.filter(r => r !== core).map(r => r.name.replace('@leptoquark1/openage-pfadfinder-', '') + ' ' + r.newVersion);
+            [core ? core.type + ' version ' + core.newVersion : '', ...rest].filter(Boolean).join(', ')
+          ")
           rm changeset-status.json
           echo "release=${release}" >> "$GITHUB_OUTPUT"
 

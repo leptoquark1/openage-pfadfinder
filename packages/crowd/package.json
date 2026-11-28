@@ -1,0 +1,70 @@
+{
+  "name": "@leptoquark1/openage-pfadfinder-crowd",
+  "version": "0.0.0",
+  "description": "Crowd simulation on top of openage-pfadfinder: steering, avoidance, lane formation and congestion costs",
+  "keywords": [
+    "crowd-simulation",
+    "flow-field",
+    "openage",
+    "pathfinding",
+    "steering",
+    "typescript"
+  ],
+  "homepage": "https://github.com/leptoquark1/openage-pfadfinder/tree/main/packages/crowd#readme",
+  "bugs": {
+    "url": "https://github.com/leptoquark1/openage-pfadfinder/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leptoquark1/openage-pfadfinder.git",
+    "directory": "packages/crowd"
+  },
+  "license": "GPL-3.0-or-later",
+  "author": "David Fecke (leptoquark1)",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p scripts --noEmit",
+    "test": "vitest run",
+    "benchmark": "pnpm --reporter=silent build && node scripts/bench.ts",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepack": "node -e \"fs.copyFileSync('../../LICENSE', 'LICENSE')\"",
+    "check:package": "publint && attw --pack . --profile esm-only",
+    "prepublishOnly": "pnpm -w run check"
+  },
+  "peerDependencies": {
+    "@leptoquark1/openage-pfadfinder": "^2.0.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@leptoquark1/openage-pfadfinder": "workspace:*",
+    "@types/node": "26.6.6",
+    "@vitest/coverage-v8": "5.1.1",
+    "publint": "0.3.25",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.1"
+  }
+}

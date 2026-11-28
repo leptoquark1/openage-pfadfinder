@@ -19,6 +19,7 @@ As of commit `1c9febe`.
 10. [The demo as a reference consumer](#10-the-demo-as-a-reference-consumer)
 11. [Build, quality and release](#11-build-quality-and-release)
 12. [Where does a change belong?](#12-where-does-a-change-belong)
+13. [The crowd plugin](#13-the-crowd-plugin)
 
 ## 1. Overview
 
@@ -842,19 +843,35 @@ Some public members are no longer used by the library code. Removing them would 
 `apps/demo` shows the library under load and plans **no routes of its own**. Both of its parts go through the public
 API:
 
-- The **playground** (`World`) keeps one global cost layer, syncs it with `buildGrid` and `Grid.updateCosts`, and gets
-  every route from `Pathfinder.getFlowRoute()`.
+- The **playground** (`World`) keeps one global cost layer, syncs it with `buildGrid` and `Grid.updateCosts`, and moves
+  its mobs as a crowd with the [crowd plugin](#13-the-crowd-plugin), which gets every route from
+  `Pathfinder.getFlowRoute()`.
 - The **guide** runs the real `Pathfinder` and `portalAStar` and records what they do. Its tests compare the recordings
   with the library.
 
-Mobs standing in the same walkable area of a sector (`Sector.getAreas()`) share one `FlowRoute`, planned for the first
-mob that asks for it. Each mob then gets its next cell from `FlowRoute.next()`, and a mob pushed off its route switches
-to the route of the area it stands in. After a change to the target or the costs, the next planning tick assigns every
-mob a route again. Sectors whose costs stayed the same reuse their cached fields.
+Every mob is an agent of a `CrowdSimulation`. Its `FlowRouteGuidance` shares routes between the mobs that can use them
+and plans new ones within a budget; avoidance, lanes (side rule) and walls are the plugin's. Incremental cost updates go
+through `CrowdSimulation.applyTerrain()`, so routes over changed sectors are replanned at once and, with the congestion
+toggle on, terrain and density surcharges stay apart. A grid built from scratch (first build, resize, reset) or changed
+crowd settings get a new crowd with every mob at its position.
 
-What stays in the demo is the simulation around the routes: walls, labyrinths, moving obstacles, mob movement and local
-avoidance. A mob counts as blocked when the library has no route for it. The flow overlay draws the fields of the routes
-in use, so sectors no mob's route passes through show no arrows.
+Next to the playground ("Sandbox") the demo has a crowd simulation scene ("Crowds", `CrowdScene` in
+`apps/demo/src/world/scene.ts`, a `World` with groups): groups of mobs with a start, a goal, a size, a speed (with
+spread) and a start delay walk to their goals and come to rest there. A run is started, paused and restarted from its
+panel, at 0.25× to 4× speed, and ends once every group arrived or every mob that has not arrived has been stuck for
+2 s. It opens with the "crossing" template: four groups of 30 ± 20 % mobs, each from a corner to the opposite one.
+Walls, terrain and moving obstacles are edited as in the playground; mobs come from the groups only. The Start and
+Goal tools move the selected group's start and goal. `World` offers the hooks for it: `goalFor()`, `onArrived()`, a time scale and pause.
+
+What stays in the demo is the world around the crowd: walls, labyrinths, terrain, moving obstacles (a `SteeringForce` of
+the demo keeps mobs off them between planning ticks, and the planning tick stamps them into the cost layer), the
+respawn of arrived mobs and the terrain slowdown (`setMaxSpeed()` by the cost of the mob's cell). The crowd panel (toolbar
+"Tuning") sets the side rule (left, right, off), the steering (`FlowRouteGuidance` or `PathGuidance`), avoidance strength,
+look-ahead, personal space, the replan interval (the planning tick, and the path replan interval) and congestion costs;
+numbers change the running strategies through `configure()`, the switches build a new crowd that keeps positions and
+velocities. A mob counts as
+blocked when the library has no route for it. The traces and the flow overlay show the routes the agents follow
+(`FlowRouteGuidance.getRoute()`), so sectors no mob's route passes through show no arrows.
 
 ```mermaid
 flowchart TD
@@ -869,15 +886,16 @@ flowchart TD
     subgraph World["World"]
         Obstacles["moveObstacles()"] --> Plan{"100 ms since<br/>last planning?"}
         Plan -- yes --> Rebuild["rebuildGrid()<br/>only after changes"]
-        Rebuild --> Routes["refreshRoutes()<br/>one route per sector area"]
-        Routes --> Trace["traceMob()<br/>at most 12 per tick"]
-        Trace --> Mobs["moveMobs()"]
+        Rebuild --> CrowdPlan["crowd.plan()<br/>after changes"]
+        CrowdPlan --> Trace["traceMob()<br/>at most 12 per tick"]
+        Trace --> Mobs["moveMobs()<br/>fixed crowd steps"]
         Plan -- no --> Mobs
     end
 
-    Rebuild -. "buildGrid, updateCosts" .-> Library["openage-pfadfinder"]
-    Routes -. "Pathfinder.getFlowRoute" .-> Library
-    Mobs -. "FlowRoute.next" .-> Library
+    Rebuild -. "buildGrid, applyTerrain" .-> Crowd["openage-pfadfinder-crowd"]
+    CrowdPlan -.-> Crowd
+    Mobs -. "step, getPosition" .-> Crowd
+    Crowd -. "getFlowRoute, FlowRoute.next" .-> Library["openage-pfadfinder"]
 ```
 
 ## 11. Build, quality and release
@@ -928,3 +946,29 @@ Tests are organized by topic:
 | New flag                        | `shared/constants.ts`                            | Keep integration and flow bits from colliding                |
 | New public API                  | `src/index.ts` or `src/shared/index.ts`          | Update `docs/API.md`, add a changeset                        |
 | Different map format            | `shared/cost-map`                                | Keep the row-major contract of the sectors                   |
+| Crowd movement, avoidance, congestion | `packages/crowd`                           | Public API only; cost writes must keep passability (section 13) |
+
+## 13. The crowd plugin
+
+`packages/crowd` (`@leptoquark1/openage-pfadfinder-crowd`, published separately) moves crowds along the routes of this library; the demo's
+mobs use it (section 10). It depends on the public API only (peer dependency) and changes nothing in the core. Details, defaults
+and sources are in its [README](../packages/crowd/README.md).
+
+| Concern | Module | Uses from the core |
+| ------- | ------ | ------------------ |
+| Global guidance | `guidance/flow-route.ts` | `Pathfinder.getFlowRoute()`, `FlowRoute.next()`, `isLineWalkable()`, `CostField.getVersion()` |
+| Map view | `navigation.ts` | `Grid.getSector()`, live `CostField.getCosts()` arrays |
+| Local steering | `steering/*`, `collision/*` | — |
+| Congestion | `congestion/*` | `CostField.setCosts()`, `Grid.updateCosts()` |
+
+How it relies on the core's contracts:
+
+- **Cost changes without portal rebuilds.** Portals depend on passability only. The density surcharge never turns a
+  passable cell impassable, so `CostField.setCosts()` is enough: the version bump drops the sector's cached fields
+  (section 6) and the next routes steer around the crowd. Terrain edits go through `Grid.updateCosts()`.
+- **Stale routes stay intact.** A dropped cache entry is released, never reset or reused, so a `FlowRoute` planned before
+  a change still holds valid (old) fields. The plugin keeps following such routes while only costs changed (`STALE`)
+  and replans at once when passability may have changed (`UNSAFE`), told apart by cost field versions.
+- **Known limits carry over** (section 9): congestion cannot change portal selection, and surcharged cells (cost above
+  `COST_MIN`) block line of sight, so string-pulling stops in a jam.
+
