@@ -74,7 +74,11 @@ export interface ObstacleView {
 /**
  * Keeps agents off the demo's moving obstacles between planning ticks: the
  * obstacles are walls only once the next tick stamps them into the cost
- * layer, so they push agents away with a force that grows towards the box.
+ * layer, and the tick stamps every cell an obstacle's box touches. So the
+ * force pushes agents away from those whole cells, not just from the box:
+ * an agent standing in a cell that is about to be stamped is pushed out
+ * beforehand instead of being moved out of the new wall at once. It grows
+ * from `margin` beyond the cells towards them and is strongest inside.
  * An example of a `SteeringForce` outside the plugin.
  */
 export class ObstacleRepulsion implements SteeringForce {
@@ -84,8 +88,8 @@ export class ObstacleRepulsion implements SteeringForce {
 
   /**
    * @param obstacles read on every call, so the force always sees the current positions
-   * @param margin distance (cells) beyond the box at which the push starts
-   * @param strength acceleration (cells/s²) right at the box
+   * @param margin distance (cells) beyond the covered cells at which the push starts
+   * @param strength acceleration (cells/s²) right at the cells; twice that inside them
    */
   constructor(obstacles: () => readonly ObstacleView[], margin = 0.25, strength = 40) {
     this.obstacles = obstacles;
@@ -98,14 +102,39 @@ export class ObstacleRepulsion implements SteeringForce {
     const y = ctx.agents.y(i);
     const reach = ctx.agents.radius(i) + this.margin;
     for (const o of this.obstacles()) {
-      const dx = x - o.x;
-      const dy = y - o.y;
+      // the cells the planning tick stamps: every cell the box touches
+      const x0 = Math.floor(o.x - o.half);
+      const x1 = Math.floor(o.x + o.half) + 1;
+      const y0 = Math.floor(o.y - o.half);
+      const y1 = Math.floor(o.y + o.half) + 1;
+      const cx = Math.min(Math.max(x, x0), x1);
+      const cy = Math.min(Math.max(y, y0), y1);
+      const dx = x - cx;
+      const dy = y - cy;
       const dist = Math.hypot(dx, dy);
-      const range = o.half + reach;
-      if (dist < range && dist > 1e-6) {
-        const push = (range - dist) / range;
-        out.x += (dx / dist) * push * this.strength;
-        out.y += (dy / dist) * push * this.strength;
+      if (dist > 1e-9) {
+        if (dist < reach) {
+          const push = ((reach - dist) / reach) * this.strength;
+          out.x += (dx / dist) * push;
+          out.y += (dy / dist) * push;
+        }
+        continue;
+      }
+      // inside the covered cells: out through the nearest side
+      const left = x - x0;
+      const right = x1 - x;
+      const top = y - y0;
+      const bottom = y1 - y;
+      const nearest = Math.min(left, right, top, bottom);
+      const push = 2 * this.strength;
+      if (nearest === left) {
+        out.x -= push;
+      } else if (nearest === right) {
+        out.x += push;
+      } else if (nearest === top) {
+        out.y -= push;
+      } else {
+        out.y += push;
       }
     }
   }

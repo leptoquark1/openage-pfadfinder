@@ -257,4 +257,18 @@ describe('ObstacleRepulsion', () => {
     force.accumulate(ctx, 0, neighbors, none);
     expect(none).toEqual({ x: 0, y: 0 });
   });
+
+  it('pushes an agent out of every cell the obstacle box touches, not just off the box', () => {
+    // box [4.7, 5.5]²: it touches the cells 4..5, which the planning tick stamps as walls
+    const obstacles = [{ x: 5.1, y: 5.1, half: 0.4 }];
+    const force = new ObstacleRepulsion(() => obstacles);
+    // in cell (4, 4), far from the box itself, close to the cells' west side
+    const agents = { x: () => 4.2, y: () => 4.3, radius: () => 0.2 };
+    const ctx = { agents } as unknown as Parameters<ObstacleRepulsion['accumulate']>[0];
+    const neighbors = { count: 0, index: new Int32Array(0), distSq: new Float64Array(0) };
+    const out = { x: 0, y: 0 };
+    force.accumulate(ctx, 0, neighbors, out);
+    expect(out.x).toBeLessThan(0); // out through the nearest side
+    expect(out.y).toBe(0);
+  });
 });

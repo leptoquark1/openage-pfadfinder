@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CrowdScene, GROUP_RANGES } from '../src/world/scene.js';
 import { CELL_SIZE } from '../src/world/world.js';
 
@@ -213,6 +213,29 @@ describe('CrowdScene', () => {
     run(s, 30, undefined, 3000);
     const mob = s.getMobs().find(m => m.group === g.id)!;
     expect(mob.trace.at(-1)).toEqual({ ne: 20, se: 2 });
+  });
+
+  it('sends groups under way to their goal again when a smaller view moves it', () => {
+    const s = scene();
+    s.start();
+    run(s, 20);
+    const before = new Map(s.getGroups().map(g => [g.id, g.goal]));
+    const resent = new Set<number>();
+    const send = vi
+      .spyOn(s as unknown as { sendToTarget(mob: { group: number }): void }, 'sendToTarget')
+      .mockImplementation(mob => {
+        resent.add(mob.group);
+      });
+    s.resize(30, 18); // the east and south corners move inside
+    send.mockRestore();
+    const moved = s.getGroups().filter(g => {
+      const prev = before.get(g.id)!;
+      return prev.ne !== g.goal.ne || prev.se !== g.goal.se;
+    });
+    expect(moved.length).toBeGreaterThan(0);
+    for (const g of moved) {
+      expect(resent.has(g.id)).toBe(true);
+    }
   });
 
   it('cannot start without mobs and resets to the crossing', () => {

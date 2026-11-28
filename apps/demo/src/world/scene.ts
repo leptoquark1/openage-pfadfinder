@@ -373,7 +373,12 @@ export class CrowdScene extends World {
     for (const group of this.groups) {
       const clamp = (c: Waypoint) =>
         this.freeNear({ ne: Math.min(c.ne, viewCols - 1), se: Math.min(c.se, viewRows - 1) });
+      const prevGoal = group.config.goal;
       group.config = { ...group.config, start: clamp(group.config.start), goal: clamp(group.config.goal) };
+      // groups under way head for the moved goal at once, as with updateGroup()
+      if (group.released && (prevGoal.ne !== group.config.goal.ne || prevGoal.se !== group.config.goal.se)) {
+        this.resendGroup(group);
+      }
     }
     if (this.phase === 'setup') {
       this.placeMobs();
