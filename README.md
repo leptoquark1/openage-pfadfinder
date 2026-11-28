@@ -125,6 +125,7 @@ packages/pfadfinder/                  Published library (@leptoquark1/openage-pf
   src/lib/pathfinding/                Pathfinder, portal graph A*, field cache, routing
   src/shared/                         Constants, bit ops, coordinates, cost-map helpers, types
   test/                               Vitest test suite
+packages/crowd/                       Crowd simulation plugin (in development, private): steering, avoidance, lanes, congestion
 apps/demo/                            Interactive playground (React + Vite, deployed to GitHub Pages)
 docs/                                 API reference, release and benchmark documentation
 .github/workflows/                    CI and release automation

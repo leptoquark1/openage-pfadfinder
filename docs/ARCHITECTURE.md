@@ -19,6 +19,7 @@ As of commit `1c9febe`.
 10. [The demo as a reference consumer](#10-the-demo-as-a-reference-consumer)
 11. [Build, quality and release](#11-build-quality-and-release)
 12. [Where does a change belong?](#12-where-does-a-change-belong)
+13. [The crowd plugin](#13-the-crowd-plugin)
 
 ## 1. Overview
 
@@ -928,3 +929,29 @@ Tests are organized by topic:
 | New flag                        | `shared/constants.ts`                            | Keep integration and flow bits from colliding                |
 | New public API                  | `src/index.ts` or `src/shared/index.ts`          | Update `docs/API.md`, add a changeset                        |
 | Different map format            | `shared/cost-map`                                | Keep the row-major contract of the sectors                   |
+| Crowd movement, avoidance, congestion | `packages/crowd`                           | Public API only; cost writes must keep passability (section 13) |
+
+## 13. The crowd plugin
+
+`packages/crowd` (`@leptoquark1/openage-pfadfinder-crowd`, in development, private) moves crowds along the routes of
+this library. It depends on the public API only (peer dependency) and changes nothing in the core. Details, defaults
+and sources are in its [README](../packages/crowd/README.md).
+
+| Concern | Module | Uses from the core |
+| ------- | ------ | ------------------ |
+| Global guidance | `guidance/flow-route.ts` | `Pathfinder.getFlowRoute()`, `FlowRoute.next()`, `isLineWalkable()`, `CostField.getVersion()` |
+| Map view | `navigation.ts` | `Grid.getSector()`, live `CostField.getCosts()` arrays |
+| Local steering | `steering/*`, `collision/*` | — |
+| Congestion | `congestion/*` | `CostField.setCosts()`, `Grid.updateCosts()` |
+
+How it relies on the core's contracts:
+
+- **Cost changes without portal rebuilds.** Portals depend on passability only. The density surcharge never turns a
+  passable cell impassable, so `CostField.setCosts()` is enough: the version bump drops the sector's cached fields
+  (section 6) and the next routes steer around the crowd. Terrain edits go through `Grid.updateCosts()`.
+- **Stale routes stay intact.** A dropped cache entry is released, never reset or reused, so a `FlowRoute` planned before
+  a change still holds valid (old) fields. The plugin keeps following such routes while only costs changed (`STALE`)
+  and replans at once when passability may have changed (`UNSAFE`), told apart by cost field versions.
+- **Known limits carry over** (section 9): congestion cannot change portal selection, and surcharged cells (cost above
+  `COST_MIN`) block line of sight, so string-pulling stops in a jam.
+

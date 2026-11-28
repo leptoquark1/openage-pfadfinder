@@ -60,3 +60,24 @@ The `benchmark` job in [ci.yml](../.github/workflows/ci.yml) runs
 `pnpm benchmark latest` on PRs that change the package and fails on exit code.
 
 > Runners are noisy, so rerun a failed job before looking for a regression.
+
+## Crowd simulation
+
+`pnpm benchmark:crowd` (the crowd package's `benchmark` script) prints the time per `CrowdSimulation.step()`.
+*Uniform*: agents spread over the map with random goals. *Jam*: all agents start packed around one goal, about
+1.5 agents per cell. *+ congestion*: with `DensityCostModel`.
+
+Host: _Node v26 · AMD Ryzen 7 9800X3D 8-Core · x64_
+
+Median time per `step()` (60 ticks after 40 warm-up), 256×256 map, sector size 16
+
+| Agents | Uniform | Uniform + congestion | Jam | Jam + congestion |
+| ---: | ---: | ---: | ---: | ---: |
+| **100** | 0.11&#x2009;<small>ms</small> | 0.13&#x2009;<small>ms</small> | 0.18&#x2009;<small>ms</small> | 0.18&#x2009;<small>ms</small> |
+| **500** | 0.38&#x2009;<small>ms</small> | 0.53&#x2009;<small>ms</small> | 1.03&#x2009;<small>ms</small> | 0.98&#x2009;<small>ms</small> |
+| **1,000** | 0.79&#x2009;<small>ms</small> | 0.91&#x2009;<small>ms</small> | 2.06&#x2009;<small>ms</small> | 2.06&#x2009;<small>ms</small> |
+| **5,000** | 3.71&#x2009;<small>ms</small> | 3.93&#x2009;<small>ms</small> | 11.04&#x2009;<small>ms</small> | 11.50&#x2009;<small>ms</small> |
+| **10,000** | 9.33&#x2009;<small>ms</small> | 9.59&#x2009;<small>ms</small> | 22.19&#x2009;<small>ms</small> | 22.73&#x2009;<small>ms</small> |
+
+A jam costs about 2–3× a spread crowd: every agent has its full set of neighbors, and the overlap resolver works on
+every pair.
