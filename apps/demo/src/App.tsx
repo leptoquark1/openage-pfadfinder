@@ -4,7 +4,7 @@ import { PathfinderCanvas } from './components/PathfinderCanvas.js';
 import { type Scene, Toolbar } from './components/Toolbar.js';
 import { WelcomeDialog } from './components/WelcomeDialog.js';
 import { isUnseen, markSeen, WELCOME_KEY } from './seen.js';
-import type { Mode } from './theme.js';
+import type { Mode, View } from './theme.js';
 import { CrowdScene } from './world/scene.js';
 import { World, type WorldStats } from './world/world.js';
 
@@ -19,6 +19,8 @@ export function App() {
   const [mode, setMode] = useState<Mode>('target');
   // Last mode other than "target" — active again once a target has been placed.
   const lastDrawMode = useRef<Exclude<Mode, 'target'>>('obstacle');
+  const [view, setView] = useState<View>('top');
+  const [hillsConfirm, setHillsConfirm] = useState(false);
   const [showFlow, setShowFlow] = useState(true);
   const [showTraces, setShowTraces] = useState(true);
   const [showPerf, setShowPerf] = useState(false);
@@ -116,6 +118,27 @@ export function App() {
     world.scatterWallsAroundTarget();
   }, [world]);
 
+  const handleGenerateHills = useCallback(() => {
+    if (world.hasElevation()) {
+      setHillsConfirm(true);
+      return;
+    }
+    world.generateHills();
+  }, [world]);
+
+  const handleConfirmHills = useCallback(() => {
+    setHillsConfirm(false);
+    world.generateHills();
+  }, [world]);
+
+  const handleCancelHills = useCallback(() => {
+    setHillsConfirm(false);
+  }, []);
+
+  const handleFlattenGround = useCallback(() => {
+    world.flattenGround();
+  }, [world]);
+
   const status = world instanceof CrowdScene ? world.statusText() : statusText(stats, mode);
 
   return (
@@ -125,6 +148,10 @@ export function App() {
         onScene={handleScene}
         mode={mode}
         onMode={handleMode}
+        view={view}
+        onView={setView}
+        onGenerateHills={handleGenerateHills}
+        onFlattenGround={handleFlattenGround}
         showFlow={showFlow}
         onShowFlow={setShowFlow}
         showTraces={showTraces}
@@ -145,6 +172,7 @@ export function App() {
       <PathfinderCanvas
         world={world}
         mode={mode}
+        view={view}
         showFlow={showFlow}
         showTraces={showTraces}
         showPerf={showPerf}
@@ -164,6 +192,15 @@ export function App() {
         The maze replaces all existing obstacles: <span className="text-fg">{mazeConfirm?.walls ?? 0}</span> walls and{' '}
         <span className="text-fg">{mazeConfirm?.moving ?? 0}</span> moving obstacles will be removed. The target and
         mobs are kept.
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={hillsConfirm}
+        title="Generate hills?"
+        confirmLabel="Replace elevation"
+        onConfirm={handleConfirmHills}
+        onCancel={handleCancelHills}
+      >
+        New hills replace the current elevation. Walls, terrain, the target, and mobs stay.
       </ConfirmDialog>
       {showWelcome && <WelcomeDialog onDone={handleWelcomeDone} />}
     </div>

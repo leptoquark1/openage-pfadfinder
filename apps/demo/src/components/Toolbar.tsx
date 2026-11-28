@@ -2,17 +2,20 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
   BookOpen,
+  Box,
   BrickWall,
   Dices,
+  Eraser,
   Eye,
   Info,
+  MountainSnow,
   RotateCcw,
   Route,
   Shapes,
   SlidersHorizontal,
   Users,
 } from 'lucide-react';
-import { MODES, type Mode } from '../theme.js';
+import { MODES, type Mode, type View } from '../theme.js';
 
 interface ToolbarButtonProps {
   active?: boolean;
@@ -57,6 +60,10 @@ interface ToolbarProps {
   onScene: (scene: Scene) => void;
   mode: Mode;
   onMode: (mode: Mode) => void;
+  view: View;
+  onView: (view: View) => void;
+  onGenerateHills: () => void;
+  onFlattenGround: () => void;
   showFlow: boolean;
   onShowFlow: (show: boolean) => void;
   showTraces: boolean;
@@ -80,6 +87,10 @@ export function Toolbar({
   onScene,
   mode,
   onMode,
+  view,
+  onView,
+  onGenerateHills,
+  onFlattenGround,
   showFlow,
   onShowFlow,
   showTraces,
@@ -147,10 +158,26 @@ export function Toolbar({
         ))}
       </div>
 
+      <ToolbarSectionTitle label="Elevation" mt={true} />
+
+      <div role="radiogroup" aria-label="Elevation">
+        {MODES.filter(m => m.type === 'elevation').map(m => (
+          <ToolbarButton key={m.id} active={mode === m.id} icon={m.icon} label={m.label} onClick={() => onMode(m.id)} />
+        ))}
+      </div>
+      <ToolbarButton icon={MountainSnow} label="Hills" onClick={onGenerateHills} />
+      <ToolbarButton icon={Eraser} label="Flatten" onClick={onFlattenGround} />
+
       <div className="flex-1" />
 
       <ToolbarSectionTitle label="View" />
 
+      <ToolbarButton
+        active={view === 'iso'}
+        icon={Box}
+        label="3D"
+        onClick={() => onView(view === 'iso' ? 'top' : 'iso')}
+      />
       <ToolbarButton active={showFlow} icon={Eye} label="Flow" onClick={() => onShowFlow(!showFlow)} />
       <ToolbarButton active={showTraces} icon={Route} label="Traces" onClick={() => onShowTraces(!showTraces)} />
       <ToolbarButton

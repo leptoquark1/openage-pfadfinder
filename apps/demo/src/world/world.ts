@@ -1,6 +1,7 @@
 import {
   buildGrid,
   COST_IMPASSABLE,
+  COST_MAX,
   COST_MIN,
   FLOW_PATHABLE_MASK,
   type FlowField,
@@ -30,6 +31,7 @@ import {
   needsNewCrowd,
   type ObstacleView,
 } from './crowd.js';
+import { applyBrush, BRUSH_STRENGTH, generateHeights, isCliff, slopeAt, slopeCost } from './elevation.js';
 import { PerfMeter } from './perf.js';
 import { type TerrainId, terrainById } from './terrain.js';
 
@@ -157,6 +159,8 @@ export class World {
    * on terrain, a labyrinth or a scatter leaves the terrain underneath.
    */
   private terrain = new Uint8Array(0);
+  private height = new Uint8Array(0);
+  private groundVersion = 0;
   /** Static walls plus moving obstacles, the layer sectors are built from. */
   private dynamicCost = new Uint8Array(0);
 
@@ -241,6 +245,22 @@ export class World {
   /** Terrain layer: the cost of every cell without its wall, `COST_MIN` for free ground. */
   getTerrain(): Uint8Array {
     return this.terrain;
+  }
+
+  getHeight(): Uint8Array {
+    return this.height;
+  }
+
+  getGroundVersion(): number {
+    return this.groundVersion;
+  }
+
+  hasElevation(): boolean {
+    return this.height.some(level => level > 0);
+  }
+
+  isCliffCell(ne: number, se: number): boolean {
+    return isCliff(slopeAt(this.height, this.cols, this.rows, ne + se * this.cols));
   }
 
   /**
@@ -359,6 +379,7 @@ export class World {
     // both, so removal leaves them alone.
     const next = resizeLayer(this.staticCost, this.cols, this.rows, cols, rows);
     const terrain = resizeLayer(this.terrain, this.cols, this.rows, cols, rows);
+    const height = resizeLayer(this.height, this.cols, this.rows, cols, rows, 0);
     if (this.labyrinth) {
       this.labyrinth = resizeLayer(this.labyrinth, this.cols, this.rows, cols, rows);
     }
@@ -369,6 +390,7 @@ export class World {
     this.rows = rows;
     this.staticCost = next;
     this.terrain = terrain;
+    this.height = height;
     this.dynamicCost = new Uint8Array(cols * rows);
     this.recountWalls();
 
@@ -403,12 +425,13 @@ export class World {
 
     // The layer size changed, so the grid needs a full rebuild.
     this.gridDirtyAll = true;
-    this.markCellsDirty(0, 0, cols - 1, rows - 1);
+    this.markGroundDirty(0, 0, cols - 1, rows - 1);
   }
 
   reset(): void {
     this.staticCost.fill(COST_MIN);
     this.terrain.fill(COST_MIN);
+    this.height.fill(0);
     this.wallCount = 0;
     this.labyrinth = null;
     this.mobs.length = 0;
@@ -417,7 +440,7 @@ export class World {
     this.target = null;
     this.disposeCrowd();
     this.gridDirtyAll = true;
-    this.markCellsDirty(0, 0, this.cols - 1, this.rows - 1);
+    this.markGroundDirty(0, 0, this.cols - 1, this.rows - 1);
   }
 
   /**
@@ -652,7 +675,7 @@ export class World {
 
     this.labyrinth = this.staticCost.slice();
     this.recountWalls();
-    this.markCellsDirty(0, 0, this.cols - 1, this.rows - 1);
+    this.markGroundDirty(0, 0, this.cols - 1, this.rows - 1);
   }
 
   /** True while a generated labyrinth is active and can be removed. */
@@ -680,7 +703,7 @@ export class World {
     }
 
     this.recountWalls();
-    this.markCellsDirty(0, 0, this.cols - 1, this.rows - 1);
+    this.markGroundDirty(0, 0, this.cols - 1, this.rows - 1);
   }
 
   /**
@@ -792,7 +815,7 @@ export class World {
     }
 
     this.recountWalls();
-    this.markCellsDirty(minNe, minSe, maxNe, maxSe);
+    this.markGroundDirty(minNe, minSe, maxNe, maxSe);
     return true;
   }
 
@@ -901,7 +924,7 @@ export class World {
       this.wallCount++;
     }
     this.staticCost[idx] = COST_IMPASSABLE;
-    this.markCellsDirty(cell.ne, cell.se, cell.ne, cell.se);
+    this.markGroundDirty(cell.ne, cell.se, cell.ne, cell.se);
   }
 
   /** Erase a wall cell. Right-click erasing calls this repeatedly. */
@@ -916,7 +939,7 @@ export class World {
     }
     this.staticCost[idx] = COST_MIN;
     this.wallCount--;
-    this.markCellsDirty(cell.ne, cell.se, cell.ne, cell.se);
+    this.markGroundDirty(cell.ne, cell.se, cell.ne, cell.se);
   }
 
   /**
@@ -934,7 +957,7 @@ export class World {
       return;
     }
     this.terrain[idx] = cost;
-    this.markCellsDirty(cell.ne, cell.se, cell.ne, cell.se);
+    this.markGroundDirty(cell.ne, cell.se, cell.ne, cell.se);
   }
 
   /** Turn a terrain cell back into free ground. Right-click erasing calls this repeatedly. */
@@ -948,7 +971,42 @@ export class World {
       return;
     }
     this.terrain[idx] = COST_MIN;
-    this.markCellsDirty(cell.ne, cell.se, cell.ne, cell.se);
+    this.markGroundDirty(cell.ne, cell.se, cell.ne, cell.se);
+  }
+
+  raiseGround(px: number, py: number): void {
+    this.brushGround(px, py, BRUSH_STRENGTH);
+  }
+
+  lowerGround(px: number, py: number): void {
+    this.brushGround(px, py, -BRUSH_STRENGTH);
+  }
+
+  generateHills(random: () => number = Math.random): void {
+    if (this.cols === 0 || this.rows === 0) {
+      return;
+    }
+    this.height.set(generateHeights(this.cols, this.rows, random));
+    this.markGroundDirty(0, 0, this.cols - 1, this.rows - 1);
+  }
+
+  flattenGround(): void {
+    this.height.fill(0);
+    this.markGroundDirty(0, 0, this.cols - 1, this.rows - 1);
+  }
+
+  private brushGround(px: number, py: number, delta: number): void {
+    const cell = this.cellAt(px, py);
+    if (!cell) {
+      return;
+    }
+    const rect = applyBrush(this.height, this.cols, this.rows, cell.ne, cell.se, delta);
+    this.markGroundDirty(
+      Math.max(0, rect.minNe - 1),
+      Math.max(0, rect.minSe - 1),
+      Math.min(this.cols - 1, rect.maxNe + 1),
+      Math.min(this.rows - 1, rect.maxSe + 1),
+    );
   }
 
   addMovingObstacle(px: number, py: number): void {
@@ -1092,7 +1150,7 @@ export class World {
     if (ne < 0 || se < 0 || ne >= this.cols || se >= this.rows) {
       return true;
     }
-    if (this.staticCost[ne + se * this.cols] === COST_IMPASSABLE) {
+    if (this.staticCost[ne + se * this.cols] === COST_IMPASSABLE || this.isCliffCell(ne, se)) {
       return true;
     }
     for (const o of this.obstacles) {
@@ -1264,6 +1322,11 @@ export class World {
     }
     this.costDirty = true;
     this.version++;
+  }
+
+  private markGroundDirty(minNe: number, minSe: number, maxNe: number, maxSe: number): void {
+    this.groundVersion++;
+    this.markCellsDirty(minNe, minSe, maxNe, maxSe);
   }
 
   /** Mark the cells covered by an obstacle's bounding box as dirty. */
@@ -1606,7 +1669,12 @@ export class World {
 
   /** Cost of a cell without moving obstacles: its wall, else its terrain. */
   private groundCost(idx: number): number {
-    return this.staticCost[idx] === COST_IMPASSABLE ? COST_IMPASSABLE : this.terrain[idx]!;
+    return this.staticCost[idx] === COST_IMPASSABLE ? COST_IMPASSABLE : this.walkCost(idx);
+  }
+
+  private walkCost(idx: number): number {
+    const extra = slopeCost(slopeAt(this.height, this.cols, this.rows, idx));
+    return extra === COST_IMPASSABLE ? COST_IMPASSABLE : Math.min(COST_MAX, this.terrain[idx]! + extra);
   }
 
   /** Bounding rectangle of the dirty sectors, in cells. */
@@ -1825,8 +1893,8 @@ export class World {
   /** Top speed of a mob's agent in cells/s: its own speed, slowed by the terrain under it. */
   private agentSpeed(mob: Mob): number {
     const cell = this.cellAt(mob.x, mob.y);
-    const cost = cell ? this.terrain[cell.ne + cell.se * this.cols]! : COST_MIN;
-    return (mob.speed * terrainSpeedFactor(cost)) / CELL_SIZE;
+    const cost = cell ? this.walkCost(cell.ne + cell.se * this.cols) : COST_MIN;
+    return (mob.speed * terrainSpeedFactor(cost === COST_IMPASSABLE ? COST_MIN : cost)) / CELL_SIZE;
   }
 
   /** An arrived mob: in the playground it goes back to its spawn for another run. */
@@ -1950,8 +2018,9 @@ function resizeLayer(
   oldRows: number,
   cols: number,
   rows: number,
+  fill: number = COST_MIN,
 ): Uint8Array<ArrayBuffer> {
-  const next = new Uint8Array(cols * rows).fill(COST_MIN);
+  const next = new Uint8Array(cols * rows).fill(fill);
   const copyCols = Math.min(cols, oldCols);
   const copyRows = Math.min(rows, oldRows);
   for (let y = 0; y < copyRows; y++) {

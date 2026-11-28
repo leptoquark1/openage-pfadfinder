@@ -5,6 +5,7 @@ import {
   Droplets,
   Flag,
   Footprints,
+  Mountain,
   SignpostBig,
   Square,
   Target,
@@ -39,6 +40,11 @@ export const COLORS = {
   perfGood: '#3FBF7F',
   perfWarn: '#F5A623',
   perfBad: '#E5484D',
+  groundLow: '#151C21',
+  groundHigh: '#5A6B78',
+  contour: '#56636E',
+  cliff: '#0A0D10',
+  skirt: '#0F1417',
 } as const;
 
 /** Fill of each terrain on the canvas, drawn translucent under the flow field. */
@@ -56,8 +62,17 @@ const TERRAIN_ICONS: Record<TerrainId, LucideIcon> = {
   swamp: WavesHorizontal,
 };
 
-export type Mode = 'target' | 'start' | 'mob' | 'obstacle' | 'movingObstacle' | 'patrolObstacle' | TerrainId;
-export type ModeType = 'target' | 'spawn' | 'obstacle' | 'terrain';
+export type Mode =
+  | 'target'
+  | 'start'
+  | 'mob'
+  | 'obstacle'
+  | 'movingObstacle'
+  | 'patrolObstacle'
+  | 'elevation'
+  | TerrainId;
+export type ModeType = 'target' | 'spawn' | 'obstacle' | 'terrain' | 'elevation';
+export type View = 'top' | 'iso';
 
 export interface ModeDescriptor {
   readonly id: Mode;
@@ -66,6 +81,7 @@ export interface ModeDescriptor {
   readonly type: ModeType;
   /** Cell cost the mode paints — terrain modes only. */
   readonly cost?: number;
+  readonly hint?: string;
 }
 
 export const MODES: ModeDescriptor[] = [
@@ -76,6 +92,7 @@ export const MODES: ModeDescriptor[] = [
   { id: 'obstacle', label: 'Wall', icon: Square, type: 'obstacle' },
   { id: 'movingObstacle', label: 'Moving', icon: SignpostBig, type: 'obstacle' },
   { id: 'patrolObstacle', label: 'Patrol', icon: ArrowLeftRight, type: 'obstacle' },
+  { id: 'elevation', label: 'Raise', icon: Mountain, type: 'elevation', hint: 'right click lowers' },
   ...TERRAINS.map(t => ({
     id: t.id,
     label: t.label,

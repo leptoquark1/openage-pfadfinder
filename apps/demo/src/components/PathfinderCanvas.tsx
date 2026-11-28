@@ -8,7 +8,8 @@ import {
   FlowDir,
 } from '@leptoquark1/openage-pfadfinder';
 import { useEffect, useRef } from 'react';
-import { COLORS, type Mode, TERRAIN_COLORS, terrainOfMode } from '../theme.js';
+import { COLORS, type Mode, TERRAIN_COLORS, terrainOfMode, type View } from '../theme.js';
+import { BRUSH_RADIUS, MAX_HEIGHT } from '../world/elevation.js';
 import {
   CELL_SIZE,
   MOB_RADIUS,
@@ -21,6 +22,7 @@ import {
 } from '../world/world.js';
 import { CrowdScene } from '../world/scene.js';
 import { terrainByCost } from '../world/terrain.js';
+import { IsoRenderer } from './iso/IsoRenderer.js';
 import { Legend } from './Legend.js';
 import { CrowdPanel } from './CrowdPanel.js';
 import { PerfPanel } from './PerfPanel.js';
@@ -32,6 +34,7 @@ import { TitleBar } from './TitleBar.js';
 interface PathfinderCanvasProps {
   world: World;
   mode: Mode;
+  view: View;
   showFlow: boolean;
   showTraces: boolean;
   showPerf: boolean;
@@ -44,7 +47,7 @@ interface PathfinderCanvasProps {
   onTargetPlaced: () => void;
 }
 
-const FLOW_VECTORS: Record<number, readonly [number, number]> = {
+export const FLOW_VECTORS: Record<number, readonly [number, number]> = {
   [FlowDir.NORTH]: [0, -1],
   [FlowDir.NORTH_EAST]: [0.7, -0.7],
   [FlowDir.EAST]: [1, 0],
@@ -56,9 +59,9 @@ const FLOW_VECTORS: Record<number, readonly [number, number]> = {
 };
 
 /** Preview colors — green shades when the placement works, red when it does not. */
-const PREVIEW_OK = '#3FBF7F';
+export const PREVIEW_OK = '#3FBF7F';
 const PREVIEW_OK_FILL = 'rgba(63, 191, 127, 0.02)';
-const PREVIEW_BAD = '#E5484D';
+export const PREVIEW_BAD = '#E5484D';
 const PREVIEW_BAD_FILL = 'rgba(229, 72, 77, 0.18)';
 
 /** Opacity of the terrain fill, low enough to keep the flow strokes readable. */
@@ -66,12 +69,13 @@ const TERRAIN_ALPHA = 0.32;
 
 /** True for the modes that paint cells and keep painting while dragged. */
 function isPaintMode(mode: Mode): boolean {
-  return mode === 'obstacle' || terrainOfMode(mode) !== null;
+  return mode === 'obstacle' || mode === 'elevation' || terrainOfMode(mode) !== null;
 }
 
 export function PathfinderCanvas({
   world,
   mode,
+  view,
   showFlow,
   showTraces,
   showPerf,
@@ -88,6 +92,8 @@ export function PathfinderCanvas({
   const modeRef = useRef(mode);
   const showFlowRef = useRef(showFlow);
   const showTracesRef = useRef(showTraces);
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const onStatsRef = useRef(onStats);
   const onTargetPlacedRef = useRef(onTargetPlaced);
   modeRef.current = mode;
@@ -116,7 +122,6 @@ export function PathfinderCanvas({
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-      world.resize(Math.ceil(width / CELL_SIZE), Math.ceil(height / CELL_SIZE));
     };
     resize();
     const observer = new ResizeObserver(resize);
@@ -126,16 +131,45 @@ export function PathfinderCanvas({
     let erasing = false;
     // Last pointer position in canvas pixels; null while the pointer is off-canvas.
     let cursor: { x: number; y: number } | null = null;
+    let lastBrushCell = '';
+    const iso = new IsoRenderer();
 
     const toCanvasPos = (e: PointerEvent): { x: number; y: number } => {
       const rect = canvas.getBoundingClientRect();
       return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
 
+    const toWorldPos = (screen: { x: number; y: number }): { x: number; y: number } | null =>
+      viewRef.current === 'iso' ? iso.pick(world, width, height, screen) : screen;
+
+    const brushMovedToNewCell = (x: number, y: number, isDrag: boolean): boolean => {
+      const cell = `${Math.floor(x / CELL_SIZE)}:${Math.floor(y / CELL_SIZE)}`;
+      if (isDrag && cell === lastBrushCell) {
+        return false;
+      }
+      lastBrushCell = cell;
+      return true;
+    };
+
     const handlePointer = (e: PointerEvent, isDrag: boolean) => {
-      const { x, y } = toCanvasPos(e);
+      const position = toWorldPos(toCanvasPos(e));
+      if (!position) {
+        return;
+      }
+      const { x, y } = position;
 
       const terrain = terrainOfMode(modeRef.current);
+
+      if (modeRef.current === 'elevation') {
+        if (brushMovedToNewCell(x, y, isDrag)) {
+          if (erasing) {
+            world.lowerGround(x, y);
+          } else if (painting) {
+            world.raiseGround(x, y);
+          }
+        }
+        return;
+      }
 
       // Right button erases the element the current mode places.
       if (erasing) {
@@ -257,14 +291,23 @@ export function PathfinderCanvas({
       lastFrame = now;
       perf.frame(dt, now);
 
+      if (viewRef.current === 'top') {
+        world.resize(Math.ceil(width / CELL_SIZE), Math.ceil(height / CELL_SIZE));
+      }
+
       perf.begin('Sim');
       world.step(dt, now);
       perf.end('Sim');
 
-      const preview = cursor ? evaluatePreview(world, modeRef.current, cursor.x, cursor.y) : null;
+      const cursorWorld = cursor ? toWorldPos(cursor) : null;
+      const preview = cursorWorld ? evaluatePreview(world, modeRef.current, cursorWorld.x, cursorWorld.y) : null;
 
       perf.begin('Draw');
-      draw(ctx, world, width, height, showFlowRef.current, showTracesRef.current, preview);
+      if (viewRef.current === 'iso') {
+        iso.draw(ctx, world, width, height, showFlowRef.current, showTracesRef.current, preview);
+      } else {
+        draw(ctx, world, width, height, showFlowRef.current, showTracesRef.current, preview);
+      }
       perf.end('Draw');
 
       // Pointer over an object right-click removes, not-allowed when placing is impossible.
@@ -323,7 +366,7 @@ export function PathfinderCanvas({
  * not), or right-click-remove the object underneath. Drives both the preview
  * overlay and the cursor style.
  */
-interface Preview {
+export interface Preview {
   readonly mode: Mode;
   readonly x: number;
   readonly y: number;
@@ -363,6 +406,9 @@ function evaluatePreview(world: World, mode: Mode, x: number, y: number): Previe
       valid = world.canPlaceMovingObstacle(x, y);
       eraseCandidate = world.movingObstacleAt(x, y);
       break;
+    case 'elevation':
+      valid = true;
+      break;
     case 'patrolObstacle':
       valid = world.canPlacePatrolObstacle(x, y);
       eraseCandidate = world.getPatrolAnchor() ? null : world.movingObstacleAt(x, y);
@@ -386,6 +432,7 @@ function draw(
   ctx.fillRect(0, 0, width, height);
 
   drawTerrain(ctx, world);
+  drawElevation(ctx, world);
   drawGrid(ctx, width, height);
 
   const grid = world.getGrid();
@@ -515,6 +562,83 @@ function drawTerrain(ctx: CanvasRenderingContext2D, world: World): void {
     ctx.fill(path);
   }
   ctx.globalAlpha = 1;
+}
+
+const HILL_SHADE_LEVELS = 6;
+const HILL_SHADE_PER_HEIGHT = 0.004;
+const HILL_SHADE_MAX_ALPHA = 0.3;
+const HEIGHT_TINT_MAX_ALPHA = 0.12;
+const CONTOUR_STEP = 32;
+
+function drawElevation(ctx: CanvasRenderingContext2D, world: World): void {
+  if (!world.hasElevation()) {
+    return;
+  }
+  const height = world.getHeight();
+  const cols = world.getCols();
+  const rows = world.getRows();
+  const levelAt = (ne: number, se: number) =>
+    height[Math.min(cols - 1, Math.max(0, ne)) + Math.min(rows - 1, Math.max(0, se)) * cols]!;
+  const lit = Array.from({ length: HILL_SHADE_LEVELS }, () => new Path2D());
+  const shaded = Array.from({ length: HILL_SHADE_LEVELS }, () => new Path2D());
+  const tinted = Array.from({ length: HILL_SHADE_LEVELS }, () => new Path2D());
+  const cliffs = new Path2D();
+  const contours = new Path2D();
+
+  for (let se = 0; se < rows; se++) {
+    for (let ne = 0; ne < cols; ne++) {
+      const x = ne * CELL_SIZE;
+      const y = se * CELL_SIZE;
+      const own = levelAt(ne, se);
+      const rise = levelAt(ne + 1, se) - levelAt(ne - 1, se) + levelAt(ne, se + 1) - levelAt(ne, se - 1);
+      const shade = Math.min(
+        HILL_SHADE_LEVELS - 1,
+        Math.floor(Math.abs(rise) * HILL_SHADE_PER_HEIGHT * HILL_SHADE_LEVELS),
+      );
+      if (rise !== 0) {
+        (rise > 0 ? lit : shaded)[shade]!.rect(x, y, CELL_SIZE, CELL_SIZE);
+      }
+      tinted[Math.min(HILL_SHADE_LEVELS - 1, Math.floor((own / MAX_HEIGHT) * HILL_SHADE_LEVELS))]!.rect(
+        x,
+        y,
+        CELL_SIZE,
+        CELL_SIZE,
+      );
+      if (world.isCliffCell(ne, se)) {
+        cliffs.rect(x, y, CELL_SIZE, CELL_SIZE);
+      }
+      const band = Math.floor(own / CONTOUR_STEP);
+      if (ne < cols - 1 && Math.floor(levelAt(ne + 1, se) / CONTOUR_STEP) !== band) {
+        contours.moveTo(x + CELL_SIZE, y);
+        contours.lineTo(x + CELL_SIZE, y + CELL_SIZE);
+      }
+      if (se < rows - 1 && Math.floor(levelAt(ne, se + 1) / CONTOUR_STEP) !== band) {
+        contours.moveTo(x, y + CELL_SIZE);
+        contours.lineTo(x + CELL_SIZE, y + CELL_SIZE);
+      }
+    }
+  }
+
+  for (let level = 0; level < HILL_SHADE_LEVELS; level++) {
+    const share = (level + 1) / HILL_SHADE_LEVELS;
+    ctx.globalAlpha = share * HEIGHT_TINT_MAX_ALPHA;
+    ctx.fillStyle = COLORS.groundHigh;
+    ctx.fill(tinted[level]!);
+    ctx.globalAlpha = share * HILL_SHADE_MAX_ALPHA;
+    ctx.fillStyle = COLORS.textPrimary;
+    ctx.fill(lit[level]!);
+    ctx.fillStyle = COLORS.cliff;
+    ctx.fill(shaded[level]!);
+  }
+  ctx.globalAlpha = 0.7;
+  ctx.fillStyle = COLORS.cliff;
+  ctx.fill(cliffs);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = COLORS.contour;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  ctx.stroke(contours);
+  ctx.setLineDash([]);
 }
 
 function drawWalls(ctx: CanvasRenderingContext2D, world: World): void {
@@ -711,6 +835,11 @@ function drawPreview(ctx: CanvasRenderingContext2D, preview: Preview): void {
       break;
     case 'movingObstacle':
       drawMovingObstaclePreview(ctx, preview.x, preview.y);
+      break;
+    case 'elevation':
+      ctx.beginPath();
+      ctx.arc(preview.x, preview.y, BRUSH_RADIUS * CELL_SIZE, 0, Math.PI * 2);
+      ctx.stroke();
       break;
     case 'patrolObstacle':
       drawPatrolObstaclePreview(ctx, preview.x, preview.y, preview.patrolAnchor);

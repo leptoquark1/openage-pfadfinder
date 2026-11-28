@@ -18,6 +18,7 @@ export function StatusBadge({ mode, status, modeLabel }: StatusBadgeProps) {
       <div>
         Mode: <span className="text-fg">{modeLabel ?? current?.label}</span>
         {current?.cost !== undefined && <span> · cost {current.cost}</span>}
+        {current?.hint && <span> · {current.hint}</span>}
       </div>
       {status && <div className="mt-1 text-[11px] text-obstacle">{status}</div>}
     </div>

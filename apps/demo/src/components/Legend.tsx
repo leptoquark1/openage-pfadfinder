@@ -64,12 +64,16 @@ export function Legend() {
 
       <div className="mb-3"></div>
 
-      <LegendSectionTitle label="Terrain (cost per cell)" />
+      <LegendSectionTitle label="Terrain (cost per cell, slope adds cost)" />
 
       <div className="flex flex-row gap-3.5 flex-wrap">
         <div className="flex items-center justify-center gap-1.5">
           <span className="inline-block size-4 rounded-[3px] border border-border-strong" />
           <span className="font-mono">Ground 1</span>
+        </div>
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="inline-block size-4 rounded-[3px]" style={{ background: COLORS.cliff }} />
+          <span className="font-mono">Cliff</span>
         </div>
         {TERRAIN_ITEMS.map(item => (
           <div key={item.label} className="flex items-center justify-center gap-1.5">
