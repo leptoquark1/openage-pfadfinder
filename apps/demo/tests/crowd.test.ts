@@ -11,9 +11,9 @@ function run(world: World, frames: number, from = 0): void {
   }
 }
 
-/** Smallest gap between two mob bodies, in px. */
+/** Smallest gap between two mob bodies, in px; mobs just put back on their spawn do not count. */
 function minGap(world: World): number {
-  const mobs = world.getMobs();
+  const mobs = world.getMobs().filter(m => m.x !== m.spawnX || m.y !== m.spawnY);
   let min = Infinity;
   for (let i = 0; i < mobs.length; i++) {
     for (let j = i + 1; j < mobs.length; j++) {
@@ -35,7 +35,8 @@ describe('mobs as a crowd', () => {
     let arrived = 0;
     const mobs = world.getMobs();
     const spawned = new Set<number>();
-    for (let i = 0; i < 600; i++) {
+    // speeds are random (70–160 px/s): ~770 px take at most 11 s, run 19 s
+    for (let i = 0; i < 1200; i++) {
       world.step(16, i * 16);
       if (i > 10) {
         gap = Math.min(gap, minGap(world));
@@ -48,9 +49,9 @@ describe('mobs as a crowd', () => {
         }
       });
     }
-    expect(arrived).toBeGreaterThan(6);
-    // mobs respawn on top of each other at their spawns, so allow brief contact
-    expect(gap).toBeGreaterThan(-MOB_RADIUS);
+    expect(arrived).toBeGreaterThanOrEqual(10);
+    // a mob respawning next to one on its way may touch it for a step
+    expect(gap).toBeGreaterThan(-MOB_RADIUS / 2);
   });
 
   it('starts with lanes on and congestion off, and switches both', () => {
