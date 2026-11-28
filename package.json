@@ -15,6 +15,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "benchmark": "pnpm --reporter=silent --filter @leptoquark1/openage-pfadfinder benchmark",
+    "benchmark:crowd": "pnpm --reporter=silent --filter @leptoquark1/openage-pfadfinder-crowd benchmark",
     "test:coverage": "pnpm -r --filter './packages/*' test:coverage && pnpm --filter @leptoquark1/openage-pfadfinder-demo test",
     "test:perf": "pnpm --filter @leptoquark1/openage-pfadfinder-demo test:perf",
     "check:package": "pnpm -r --filter './packages/*' check:package",
