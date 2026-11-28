@@ -51,7 +51,7 @@ const NO_EXITS: ExitTable = { portals: [], costs: new Uint8Array(0) };
  * Port of openage's Portal class.
  */
 export class Portal {
-  private readonly id: PortalId;
+  private id: PortalId;
   private readonly sector0: SectorId;
   private readonly sector1: SectorId;
   private readonly direction: PortalDirection;
@@ -86,6 +86,16 @@ export class Portal {
 
   getId(): PortalId {
     return this.id;
+  }
+
+  /**
+   * Give the portal another id (by `Grid.renumberPortals()`, which keeps the
+   * grid's node map in step).
+   *
+   * @internal
+   */
+  setId(id: PortalId): void {
+    this.id = id;
   }
 
   getDirection(): PortalDirection {

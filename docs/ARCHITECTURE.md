@@ -264,6 +264,7 @@ classDiagram
         +updateCosts(changes) Set~SectorId~
         +rebuildPortals(dirty) Set~SectorId~
         +rebuildPortalNodes(changed)
+        +renumberPortals() Map~PortalId, PortalId~
     }
     class Sector {
         -position Vector2s
@@ -790,6 +791,7 @@ The integrator offers four kinds of access:
 | **Copy-on-read**          | `Integrator.getPortal()`                           | Callers may modify fields, the cache stays clean |
 | **Identity preservation** | `findPortals(..., reuse)`, `Portal.spans()`        | Surviving portals keep id, exits and node        |
 | **Canonical ordering**    | `Sector.addPortal()` sorts by edge and position    | Incremental and fresh grids plan identically     |
+| **Canonical numbering**   | `Grid.renumberPortals()` (opt-in)                  | Incremental and fresh grids also share portal ids |
 | **Snapshot**              | `FlowRoute` holds the fields from planning time    | Stable route for a group, replanning is explicit |
 
 ## 8. Contracts and invariants

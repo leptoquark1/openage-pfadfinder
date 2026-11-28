@@ -7,6 +7,7 @@ import {
   type Vector2s,
 } from '../../shared/types.js';
 import { PortalNode } from '../pathfinding/portal-graph.js';
+import type { Portal } from './portal.js';
 import type { Sector } from './sector.js';
 
 /**
@@ -18,7 +19,7 @@ export class Grid {
   private readonly size: Size2s;
   private readonly sectorSize: number;
   private readonly sectors: Sector[] = [];
-  private portalNodes: Map<PortalId, PortalNode> = new Map();
+  private readonly portalNodes: Map<PortalId, PortalNode> = new Map();
   /**
    * Whether the portal graph was built for every portal (`initPortalNodes()`
    * or a full `rebuildPortalNodes()`); until then, a rebuild limited to some
@@ -296,6 +297,78 @@ export class Grid {
       node.initExits(this.portalNodes);
     }
     this.portalGraphBuilt = true;
+  }
+
+  /**
+   * Give every portal the id a fresh build from the same costs would give it.
+   * `initPortals()` numbers portals sector by sector, row by row: first the
+   * edge to the sector below, then the edge to the right, each along the edge
+   * by position. After `updateCosts()` the portals and routes already match a
+   * fresh build, but ids do not: new portals take the next free id and
+   * survivors keep theirs. Call this when the ids themselves must not depend
+   * on the update history, e.g. before hashing or saving state that holds
+   * portal ids. Not needed for the routes, which do not depend on ids.
+   *
+   * Portal nodes keep their identity under the new ids, in the order
+   * `initPortalNodes()` would add them; nodes of portals no longer in a sector
+   * are dropped. New portals continue after the last id. Portals of sectors
+   * shared with another grid change for that grid too.
+   *
+   * Returns the ids that changed, old → new. O(portals).
+   */
+  renumberPortals(): Map<PortalId, PortalId> {
+    const order: Portal[] = [];
+    const taken = new Set<Portal>();
+    const take = (portal: Portal): void => {
+      if (!taken.has(portal)) {
+        taken.add(portal);
+        order.push(portal);
+      }
+    };
+    // A sector lists its portals in edge order (see Sector.getPortals()):
+    // those it numbers itself lie on its bottom and right edge, in the
+    // order initPortals() finds them.
+    for (let y = 0; y < this.size.height; y++) {
+      for (let x = 0; x < this.size.width; x++) {
+        const sector = this.getSector(x, y);
+        for (const portal of sector?.getPortals() ?? []) {
+          if (portal.getSector0() === sector!.getId()) {
+            take(portal);
+          }
+        }
+      }
+    }
+    // portals initPortals() would not make, e.g. ones added by hand
+    for (const sector of this.sectors) {
+      for (const portal of sector.getPortals()) {
+        take(portal);
+      }
+    }
+
+    const changed = new Map<PortalId, PortalId>();
+    for (const [id, portal] of order.entries()) {
+      if (portal.getId() !== id) {
+        changed.set(portal.getId(), id);
+        portal.setId(id);
+      }
+    }
+    this.nextPortalId = order.length;
+
+    const nodes = new Map<Portal, PortalNode>();
+    for (const node of this.portalNodes.values()) {
+      nodes.set(node.portal, node);
+    }
+    // Refilled in place: the nodes refer to this map (PortalNode.initExits()).
+    this.portalNodes.clear();
+    for (const sector of this.sectors) {
+      for (const portal of sector.getPortals()) {
+        const node = nodes.get(portal);
+        if (node && !this.portalNodes.has(portal.getId())) {
+          this.portalNodes.set(portal.getId(), node);
+        }
+      }
+    }
+    return changed;
   }
 
   getPortalMap(): Map<PortalId, PortalNode> {
